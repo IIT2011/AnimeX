@@ -1,6 +1,25 @@
-# AnimeX - Futuristic Native Android Anime Streaming Client
+<p align="center">
+  <img src="banner.png" alt="AnimeX Banner" width="100%" />
+</p>
 
-AnimeX is a native Android application built with **Kotlin** and **Jetpack Compose**, featuring a **Cyber-HUD / Neo-Tokyo Minimalist** design system, on-device personalized recommendation engine, real Google Cloud sync, and high-performance HLS playback engine.
+# AnimeX
+
+<p align="center">
+  <img src="app_logo.png" alt="AnimeX Icon" width="128" height="128" />
+  <br>
+  <strong>Futuristic Native Android Anime Streaming Client</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/IIT2011/AnimeX/releases/latest"><img src="https://img.shields.io/github/v/release/IIT2011/AnimeX?style=for-the-badge&color=00F0FF&label=Release" alt="Release" /></a>
+  <a href="https://github.com/IIT2011/AnimeX/releases/latest"><img src="https://img.shields.io/badge/Download-AnimeX--v1.0.apk-00F0FF?style=for-the-badge&logo=android" alt="Download APK" /></a>
+  <img src="https://img.shields.io/badge/Platform-Android-FF007F?style=for-the-badge&logo=android" alt="Platform" />
+  <img src="https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=for-the-badge&logo=kotlin" alt="Kotlin" />
+</p>
+
+---
+
+AnimeX is a high-performance native Android anime streaming client built with **Kotlin** and **Jetpack Compose**, featuring a **Cyber-HUD / Neo-Tokyo Minimalist** design system, on-device personalized recommendation engine, real Google Cloud sync, and native HLS playback engine.
 
 ---
 
