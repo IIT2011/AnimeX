@@ -3,6 +3,7 @@ package com.animex.app.feature.account
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.animex.app.R
 import com.animex.app.core.auth.GoogleAuthManager
 import com.animex.app.core.designsystem.*
 import com.animex.app.core.network.NetworkClient
@@ -83,6 +86,15 @@ fun AccountScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(id = R.drawable.app_logo),
+                    contentDescription = "AnimeX Logo",
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(1.dp, GlassBorder, RoundedCornerShape(6.dp))
+                )
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = "ACCOUNT",
                     color = TextPrimary,
@@ -480,13 +492,15 @@ fun GoogleLoginCard(
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.CloudSync,
-                    contentDescription = null,
-                    tint = NeonCyan,
-                    modifier = Modifier.size(28.dp)
+                Image(
+                    painter = painterResource(id = R.drawable.app_logo),
+                    contentDescription = "AnimeX Logo",
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .border(1.dp, GlassBorder, RoundedCornerShape(10.dp))
                 )
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
                         text = "LINK GOOGLE ACCOUNT",

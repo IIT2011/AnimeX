@@ -1,5 +1,6 @@
 package com.animex.app.feature.genre
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,12 +23,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.animex.app.R
 import com.animex.app.core.designsystem.*
 import com.animex.app.core.network.NetworkClient
 import com.animex.app.core.network.model.AnimeDto
@@ -56,6 +59,15 @@ fun GenreScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(id = R.drawable.app_logo),
+                    contentDescription = "AnimeX Logo",
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(1.dp, GlassBorder, RoundedCornerShape(6.dp))
+                )
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = "GENRE",
                     color = TextPrimary,
