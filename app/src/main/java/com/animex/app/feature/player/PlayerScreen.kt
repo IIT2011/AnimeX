@@ -31,6 +31,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -60,6 +61,9 @@ enum class SettingsMenu { MAIN, QUALITY, SUBTITLE, AUDIO, SPEED }
 @Composable
 fun PlayerScreen(
     episodeId: Long,
+    animeTitle: String? = null,
+    episodeNumber: Int? = null,
+    poster: String? = null,
     onBackClick: () -> Unit,
     viewModel: PlayerViewModel = viewModel()
 ) {
@@ -106,6 +110,9 @@ fun PlayerScreen(
             is PlayerUiState.Ready -> {
                 CyberVideoSurface(
                     ready = state,
+                    animeTitle = animeTitle,
+                    episodeNumber = episodeNumber,
+                    poster = poster,
                     onBackClick = onBackClick,
                     onSwitchAudio = { newTrack, pos ->
                         viewModel.switchAudioTrack(newTrack, pos)
@@ -120,12 +127,25 @@ fun PlayerScreen(
 @Composable
 fun CyberVideoSurface(
     ready: PlayerUiState.Ready,
+    animeTitle: String? = null,
+    episodeNumber: Int? = null,
+    poster: String? = null,
     onBackClick: () -> Unit,
     onSwitchAudio: (String, Long) -> Unit
 ) {
     val source = ready.activeSource
     val context = LocalContext.current
     val activity = context as? Activity
+
+    val displayTitle = when {
+        !animeTitle.isNullOrBlank() -> animeTitle
+        source.server != null && !source.server.contains("anifam", ignoreCase = true) -> source.server
+        else -> "AnimeX Stream"
+    }
+    val displayEpText = when {
+        episodeNumber != null && episodeNumber > 0 -> "EPISODE $episodeNumber"
+        else -> "STREAM"
+    }
 
     // Playback and UI States
     var isPlaying by remember { mutableStateOf(true) }
@@ -224,10 +244,10 @@ fun CyberVideoSurface(
                 UserSessionRepository.recordPlaybackProgress(
                     context = context,
                     animeId = ready.playData.episodeId,
-                    title = "Episode ${ready.playData.episodeId}",
-                    poster = null,
+                    title = displayTitle,
+                    poster = poster,
                     episodeId = ready.playData.episodeId,
-                    episodeNumber = 1,
+                    episodeNumber = episodeNumber ?: 1,
                     currentPosMs = currentPosition,
                     durationMs = duration
                 )
@@ -259,10 +279,10 @@ fun CyberVideoSurface(
                 UserSessionRepository.recordPlaybackProgress(
                     context = context,
                     animeId = ready.playData.episodeId,
-                    title = "Episode ${ready.playData.episodeId}",
-                    poster = null,
+                    title = displayTitle,
+                    poster = poster,
                     episodeId = ready.playData.episodeId,
-                    episodeNumber = 1,
+                    episodeNumber = episodeNumber ?: 1,
                     currentPosMs = currentPosition,
                     durationMs = duration
                 )
@@ -410,19 +430,23 @@ fun CyberVideoSurface(
 
                         Spacer(modifier = Modifier.width(12.dp))
 
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
-                                text = source.server ?: "STREAM MASTER",
+                                text = displayTitle,
                                 color = TextPrimary,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 14.sp
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "EPISODE ${ready.playData.episodeId} • ${ready.currentTrack.uppercase()}",
+                                text = "$displayEpText • ${ready.currentTrack.uppercase()} • ULTRA HD",
                                 color = NeonCyan,
                                 fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }

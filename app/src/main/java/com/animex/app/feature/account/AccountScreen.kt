@@ -49,7 +49,7 @@ import com.animex.app.core.network.model.WatchHistoryEntry
 @Composable
 fun AccountScreen(
     onAnimeClick: (Long) -> Unit,
-    onPlayClick: (Long) -> Unit,
+    onPlayClick: (episodeId: Long, animeTitle: String?, episodeNumber: Int?, poster: String?) -> Unit,
     viewModel: AccountViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -222,7 +222,7 @@ fun AccountScreen(
                             items(uiState.continueWatching) { entry ->
                                 ContinueWatchingCard(
                                     entry = entry,
-                                    onPlayClick = { onPlayClick(entry.episodeId) }
+                                    onPlayClick = { onPlayClick(entry.episodeId, entry.title, entry.episodeNumber, entry.poster) }
                                 )
                             }
                         }

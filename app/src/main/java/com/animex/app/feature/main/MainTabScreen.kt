@@ -18,7 +18,7 @@ import com.animex.app.feature.schedule.ScheduleScreen
 @Composable
 fun MainTabScreen(
     onAnimeClick: (Long) -> Unit,
-    onPlayClick: (Long) -> Unit,
+    onPlayClick: (episodeId: Long, animeTitle: String?, episodeNumber: Int?, poster: String?) -> Unit,
     onSearchClick: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableStateOf(AppTab.HOME) }

@@ -17,8 +17,18 @@ sealed class Screen(val route: String) {
     data object Detail : Screen("detail/{animeId}") {
         fun createRoute(animeId: Long) = "detail/$animeId"
     }
-    data object Player : Screen("player/{episodeId}") {
-        fun createRoute(episodeId: Long) = "player/$episodeId"
+    data object Player : Screen("player/{episodeId}?animeTitle={animeTitle}&episodeNumber={episodeNumber}&poster={poster}") {
+        fun createRoute(
+            episodeId: Long,
+            animeTitle: String? = null,
+            episodeNumber: Int? = null,
+            poster: String? = null
+        ): String {
+            val encodedTitle = java.net.URLEncoder.encode(animeTitle ?: "", "UTF-8")
+            val epNum = episodeNumber ?: -1
+            val encodedPoster = java.net.URLEncoder.encode(poster ?: "", "UTF-8")
+            return "player/$episodeId?animeTitle=$encodedTitle&episodeNumber=$epNum&poster=$encodedPoster"
+        }
     }
 }
 
@@ -35,8 +45,8 @@ fun AnimeXNavGraph(
                 onAnimeClick = { animeId ->
                     navController.navigate(Screen.Detail.createRoute(animeId))
                 },
-                onPlayClick = { episodeId ->
-                    navController.navigate(Screen.Player.createRoute(episodeId))
+                onPlayClick = { episodeId, animeTitle, episodeNumber, poster ->
+                    navController.navigate(Screen.Player.createRoute(episodeId, animeTitle, episodeNumber, poster))
                 },
                 onSearchClick = {
                     navController.navigate(Screen.Search.route)
@@ -61,19 +71,50 @@ fun AnimeXNavGraph(
             AnimeDetailScreen(
                 animeId = animeId,
                 onBackClick = { navController.popBackStack() },
-                onEpisodeClick = { episodeId ->
-                    navController.navigate(Screen.Player.createRoute(episodeId))
+                onEpisodeClick = { episodeId, episodeNumber, title, poster ->
+                    navController.navigate(Screen.Player.createRoute(episodeId, title, episodeNumber, poster))
                 }
             )
         }
 
         composable(
             route = Screen.Player.route,
-            arguments = listOf(navArgument("episodeId") { type = NavType.LongType })
+            arguments = listOf(
+                navArgument("episodeId") { type = NavType.LongType },
+                navArgument("animeTitle") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+                navArgument("episodeNumber") {
+                    type = NavType.IntType
+                    defaultValue = -1
+                },
+                navArgument("poster") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }
+            )
         ) { backStackEntry ->
             val episodeId = backStackEntry.arguments?.getLong("episodeId") ?: return@composable
+            val rawTitle = backStackEntry.arguments?.getString("animeTitle") ?: ""
+            val animeTitle = try {
+                java.net.URLDecoder.decode(rawTitle, "UTF-8").takeIf { it.isNotBlank() }
+            } catch (e: Exception) {
+                null
+            }
+            val epNum = backStackEntry.arguments?.getInt("episodeNumber")?.takeIf { it > 0 }
+            val rawPoster = backStackEntry.arguments?.getString("poster") ?: ""
+            val poster = try {
+                java.net.URLDecoder.decode(rawPoster, "UTF-8").takeIf { it.isNotBlank() }
+            } catch (e: Exception) {
+                null
+            }
+
             PlayerScreen(
                 episodeId = episodeId,
+                animeTitle = animeTitle,
+                episodeNumber = epNum,
+                poster = poster,
                 onBackClick = { navController.popBackStack() }
             )
         }

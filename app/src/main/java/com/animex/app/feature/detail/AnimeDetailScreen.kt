@@ -37,7 +37,7 @@ import com.animex.app.core.session.UserSessionRepository
 fun AnimeDetailScreen(
     animeId: Long,
     onBackClick: () -> Unit,
-    onEpisodeClick: (Long) -> Unit,
+    onEpisodeClick: (episodeId: Long, episodeNumber: Int, title: String, poster: String?) -> Unit,
     viewModel: DetailViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -217,7 +217,7 @@ fun AnimeDetailScreen(
                                         .clip(RoundedCornerShape(6.dp))
                                         .background(ObsidianCard)
                                         .border(1.dp, CardBorderGlowBrush, RoundedCornerShape(6.dp))
-                                        .clickable { onEpisodeClick(ep.id) },
+                                        .clickable { onEpisodeClick(ep.id, ep.number, anime.title, anime.poster) },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(

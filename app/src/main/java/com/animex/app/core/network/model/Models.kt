@@ -122,7 +122,13 @@ data class PlaybackSourceDto(
     @SerialName("media_headers") val mediaHeaders: Map<String, String> = emptyMap(),
     val qualities: List<QualityDto> = emptyList(),
     val subtitles: List<SubtitleDto> = emptyList()
-)
+) {
+    val displayServerName: String
+        get() = when {
+            server == null || server.contains("anifam", ignoreCase = true) -> "AnimeX Ultra"
+            else -> server
+        }
+}
 
 @Serializable
 data class QualityDto(
