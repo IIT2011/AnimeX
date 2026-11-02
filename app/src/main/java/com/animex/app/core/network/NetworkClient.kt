@@ -86,4 +86,6 @@ object NetworkClient {
             "https://anifam.net" + (if (posterPath.startsWith("/")) "" else "/") + posterPath
         }
     }
+
+    fun resolvePosterUrl(posterPath: String?): String? = getFullPosterUrl(posterPath)
 }

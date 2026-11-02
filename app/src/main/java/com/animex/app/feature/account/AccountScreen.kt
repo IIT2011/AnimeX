@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
@@ -42,19 +43,25 @@ import coil.compose.AsyncImage
 import com.animex.app.R
 import com.animex.app.core.auth.GoogleAuthManager
 import com.animex.app.core.designsystem.*
+import com.animex.app.core.download.AnimeDownloadGroup
+import com.animex.app.core.download.DownloadRepository
 import com.animex.app.core.network.NetworkClient
+import com.animex.app.core.session.UserSessionRepository
 import com.animex.app.core.network.model.AnimeDto
 import com.animex.app.core.network.model.WatchHistoryEntry
 
 @Composable
 fun AccountScreen(
     onAnimeClick: (Long) -> Unit,
-    onPlayClick: (episodeId: Long, animeTitle: String?, episodeNumber: Int?, poster: String?) -> Unit,
+    onPlayClick: (episodeId: Long, animeTitle: String?, episodeNumber: Int?, poster: String?, localPath: String?) -> Unit,
     viewModel: AccountViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showManualEmailDialog by remember { mutableStateOf(false) }
     var manualEmailInput by remember { mutableStateOf("") }
+    var showEditUsernameDialog by remember { mutableStateOf(false) }
+    var isWatchlistExpanded by remember { mutableStateOf(false) }
+    var isDownloadsExpanded by remember { mutableStateOf(false) }
 
     val accountChooserLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -69,6 +76,27 @@ fun AccountScreen(
 
     LaunchedEffect(Unit) {
         viewModel.refreshAccounts()
+    }
+
+    if (isWatchlistExpanded) {
+        ExpandedWatchlistView(
+            onBackClick = { isWatchlistExpanded = false },
+            onAnimeClick = onAnimeClick,
+            onPlayClick = { epId, title, epNum, poster ->
+                onPlayClick(epId, title, epNum, poster, null)
+            }
+        )
+        return
+    }
+
+    if (isDownloadsExpanded) {
+        ExpandedDownloadsView(
+            onBackClick = { isDownloadsExpanded = false },
+            onPlayOffline = { localPath, animeTitle, epNum ->
+                onPlayClick(0L, animeTitle, epNum, null, localPath)
+            }
+        )
+        return
     }
 
     Column(
@@ -161,13 +189,19 @@ fun AccountScreen(
                             },
                             onManualEntryClick = {
                                 showManualEmailDialog = true
+                            },
+                            onEditUsernameClick = {
+                                showEditUsernameDialog = true
                             }
                         )
                     } else {
                         GoogleProfileCard(
                             state = uiState,
                             onSyncClick = { viewModel.triggerCloudSync() },
-                            onLogoutClick = { viewModel.logout() }
+                            onLogoutClick = { viewModel.logout() },
+                            onEditUsernameClick = {
+                                showEditUsernameDialog = true
+                            }
                         )
                     }
                 }
@@ -222,7 +256,7 @@ fun AccountScreen(
                             items(uiState.continueWatching) { entry ->
                                 ContinueWatchingCard(
                                     entry = entry,
-                                    onPlayClick = { onPlayClick(entry.episodeId, entry.title, entry.episodeNumber, entry.poster) }
+                                    onPlayClick = { onPlayClick(entry.episodeId, entry.title, entry.episodeNumber, entry.poster, null) }
                                 )
                             }
                         }
@@ -248,7 +282,28 @@ fun AccountScreen(
                             fontFamily = FontFamily.Monospace,
                             letterSpacing = 1.sp
                         )
-                        CyberBadge(text = "${uiState.watchlist.size} SAVED", accentColor = NeonMagenta)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CyberBadge(text = "${uiState.watchlist.size} SAVED", accentColor = NeonMagenta)
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(NeonMagenta.copy(alpha = 0.15f))
+                                    .border(1.dp, NeonMagenta, RoundedCornerShape(6.dp))
+                                    .clickable { isWatchlistExpanded = true }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "EXPAND ⤢",
+                                    color = NeonMagenta,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -281,6 +336,89 @@ fun AccountScreen(
                                     anime = anime,
                                     onClick = { onAnimeClick(anime.id) },
                                     onRemoveClick = { viewModel.removeFromWatchlist(anime.id) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // In-App Downloads Section
+            item {
+                val allTasks by DownloadRepository.tasks.collectAsState()
+                val inAppGroups = remember(allTasks) {
+                    DownloadRepository.getInAppGroups()
+                }
+
+                Column(modifier = Modifier.padding(top = 24.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "IN-APP DOWNLOADS",
+                            color = TextPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 1.sp
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CyberBadge(text = "${inAppGroups.size} ANIMES", accentColor = NeonCyan)
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(NeonCyan.copy(alpha = 0.15f))
+                                    .border(1.dp, NeonCyan, RoundedCornerShape(6.dp))
+                                    .clickable { isDownloadsExpanded = true }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "EXPAND ⤢",
+                                    color = NeonCyan,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (inAppGroups.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 8.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(ObsidianCard)
+                                .border(1.dp, GlassBorder, RoundedCornerShape(10.dp))
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "NO IN-APP DOWNLOADS • DOWNLOAD ANY EPISODE TO PLAY OFFLINE",
+                                color = TextSecondary,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    } else {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(inAppGroups) { group ->
+                                InAppDownloadRailCard(
+                                    group = group,
+                                    onClick = { isDownloadsExpanded = true }
                                 )
                             }
                         }
@@ -472,6 +610,16 @@ fun AccountScreen(
             }
         )
     }
+
+    if (showEditUsernameDialog) {
+        EditUsernameDialog(
+            initialUsername = UserSessionRepository.getDisplayName(),
+            onDismiss = { showEditUsernameDialog = false },
+            onUsernameUpdated = {
+                viewModel.refreshAccounts()
+            }
+        )
+    }
 }
 
 @Composable
@@ -480,7 +628,8 @@ fun GoogleLoginCard(
     detectedAccounts: List<String>,
     onConnectDetected: (String) -> Unit,
     onLaunchChooser: () -> Unit,
-    onManualEntryClick: () -> Unit
+    onManualEntryClick: () -> Unit,
+    onEditUsernameClick: () -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -491,6 +640,61 @@ fun GoogleLoginCard(
             .padding(18.dp)
     ) {
         Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(NeonCyan.copy(alpha = 0.2f))
+                            .border(1.dp, NeonCyan, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = UserSessionRepository.getDisplayName().take(1).uppercase(),
+                            color = NeonCyan,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Text(
+                        text = "Alias: ${UserSessionRepository.getDisplayName()}",
+                        color = TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(NeonCyan.copy(alpha = 0.15f))
+                        .border(1.dp, NeonCyan, RoundedCornerShape(6.dp))
+                        .clickable(onClick = onEditUsernameClick)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "EDIT ✏️",
+                        color = NeonCyan,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
+            HorizontalDivider(color = GlassBorder, thickness = 1.dp)
+            Spacer(modifier = Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Image(
                     painter = painterResource(id = R.drawable.app_logo),
@@ -610,7 +814,8 @@ fun GoogleLoginCard(
 fun GoogleProfileCard(
     state: AccountUiState,
     onSyncClick: () -> Unit,
-    onLogoutClick: () -> Unit
+    onLogoutClick: () -> Unit,
+    onEditUsernameClick: () -> Unit = {}
 ) {
     val account = state.googleAccount ?: return
 
@@ -638,7 +843,7 @@ fun GoogleProfileCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = account.displayName.take(1).uppercase(),
+                            text = UserSessionRepository.getDisplayName().take(1).uppercase(),
                             color = NeonCyan,
                             fontWeight = FontWeight.Black,
                             fontSize = 18.sp
@@ -648,12 +853,33 @@ fun GoogleProfileCard(
                     Spacer(modifier = Modifier.width(12.dp))
 
                     Column {
-                        Text(
-                            text = account.displayName,
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = UserSessionRepository.getDisplayName(),
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(VoidDark)
+                                    .border(1.dp, GlassBorder, CircleShape)
+                                    .clickable(onClick = onEditUsernameClick),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit Username",
+                                    tint = NeonCyan,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
                         Text(
                             text = account.email,
                             color = TextSecondary,
@@ -916,5 +1142,59 @@ fun PreferenceToggle(
                 uncheckedTrackColor = ObsidianSurface
             )
         )
+    }
+}
+
+@Composable
+fun InAppDownloadRailCard(
+    group: AnimeDownloadGroup,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .width(135.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(ObsidianCard)
+            .border(1.dp, CardBorderGlowBrush, RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+            ) {
+                AsyncImage(
+                    model = NetworkClient.resolvePosterUrl(group.animePoster),
+                    contentDescription = group.animeTitle,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                ) {
+                    CyberBadge(text = "${group.completedCount} EPS", accentColor = NeonCyan)
+                }
+            }
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text(
+                    text = group.animeTitle,
+                    color = TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = group.formattedTotalSize,
+                    color = TextSecondary,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
     }
 }

@@ -19,9 +19,18 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+sealed class UsernameCheckResult {
+    data object Available : UsernameCheckResult()
+    data class Invalid(val reason: String) : UsernameCheckResult()
+    data class Taken(val reason: String) : UsernameCheckResult()
+}
+
 object UserSessionRepository {
 
     private val scope = CoroutineScope(Dispatchers.IO)
+
+    private val _customUsername = MutableStateFlow<String?>(null)
+    val customUsername: StateFlow<String?> = _customUsername.asStateFlow()
 
     private val _watchlist = MutableStateFlow<List<AnimeDto>>(emptyList())
     val watchlist: StateFlow<List<AnimeDto>> = _watchlist.asStateFlow()
@@ -46,6 +55,10 @@ object UserSessionRepository {
 
         // Initialize interest engine
         UserInterestEngine.initialize(context)
+
+        // Restore custom username from local preferences
+        val prefs = context.getSharedPreferences("animex_profile_prefs", Context.MODE_PRIVATE)
+        _customUsername.value = prefs.getString("custom_username", null)
 
         scope.launch {
             // Restore Google Account
@@ -179,5 +192,44 @@ object UserSessionRepository {
             val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             _syncStatus.value = if (success) "Auto-synced at $time" else "Sync error"
         }
+    }
+
+    fun getDisplayName(): String {
+        return _customUsername.value?.takeIf { it.isNotBlank() }
+            ?: _googleAccount.value?.displayName?.takeIf { it.isNotBlank() }
+            ?: "CyberUser_X"
+    }
+
+    fun checkUsernameAvailability(desired: String): UsernameCheckResult {
+        val trimmed = desired.trim()
+        if (trimmed.length < 3) {
+            return UsernameCheckResult.Invalid("Username must be at least 3 characters long")
+        }
+        if (trimmed.length > 20) {
+            return UsernameCheckResult.Invalid("Username cannot exceed 20 characters")
+        }
+        if (!trimmed.matches(Regex("^[a-zA-Z0-9_]+$"))) {
+            return UsernameCheckResult.Invalid("Only letters, numbers, and underscores allowed")
+        }
+
+        val reserved = setOf("admin", "administrator", "root", "system", "animex", "official", "mod", "moderator", "support")
+        if (reserved.contains(trimmed.lowercase())) {
+            return UsernameCheckResult.Taken("This username is reserved by AnimeX system")
+        }
+
+        val taken = setOf("naruto", "goku", "luffy", "ichigo", "zoro", "cyber_x", "superuser")
+        if (taken.contains(trimmed.lowercase())) {
+            return UsernameCheckResult.Taken("Username already taken. Please pick another!")
+        }
+
+        return UsernameCheckResult.Available
+    }
+
+    fun updateUsername(context: Context, newUsername: String) {
+        val trimmed = newUsername.trim()
+        _customUsername.value = trimmed
+        val prefs = context.getSharedPreferences("animex_profile_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("custom_username", trimmed).apply()
+        triggerAutoSync(context)
     }
 }

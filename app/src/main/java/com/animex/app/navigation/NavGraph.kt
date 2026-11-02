@@ -17,17 +17,19 @@ sealed class Screen(val route: String) {
     data object Detail : Screen("detail/{animeId}") {
         fun createRoute(animeId: Long) = "detail/$animeId"
     }
-    data object Player : Screen("player/{episodeId}?animeTitle={animeTitle}&episodeNumber={episodeNumber}&poster={poster}") {
+    data object Player : Screen("player/{episodeId}?animeTitle={animeTitle}&episodeNumber={episodeNumber}&poster={poster}&localPath={localPath}") {
         fun createRoute(
             episodeId: Long,
             animeTitle: String? = null,
             episodeNumber: Int? = null,
-            poster: String? = null
+            poster: String? = null,
+            localPath: String? = null
         ): String {
             val encodedTitle = java.net.URLEncoder.encode(animeTitle ?: "", "UTF-8")
             val epNum = episodeNumber ?: -1
             val encodedPoster = java.net.URLEncoder.encode(poster ?: "", "UTF-8")
-            return "player/$episodeId?animeTitle=$encodedTitle&episodeNumber=$epNum&poster=$encodedPoster"
+            val encodedLocal = java.net.URLEncoder.encode(localPath ?: "", "UTF-8")
+            return "player/$episodeId?animeTitle=$encodedTitle&episodeNumber=$epNum&poster=$encodedPoster&localPath=$encodedLocal"
         }
     }
 }
@@ -45,8 +47,8 @@ fun AnimeXNavGraph(
                 onAnimeClick = { animeId ->
                     navController.navigate(Screen.Detail.createRoute(animeId))
                 },
-                onPlayClick = { episodeId, animeTitle, episodeNumber, poster ->
-                    navController.navigate(Screen.Player.createRoute(episodeId, animeTitle, episodeNumber, poster))
+                onPlayClick = { episodeId, animeTitle, episodeNumber, poster, localPath ->
+                    navController.navigate(Screen.Player.createRoute(episodeId, animeTitle, episodeNumber, poster, localPath))
                 },
                 onSearchClick = {
                     navController.navigate(Screen.Search.route)
@@ -92,6 +94,10 @@ fun AnimeXNavGraph(
                 navArgument("poster") {
                     type = NavType.StringType
                     defaultValue = ""
+                },
+                navArgument("localPath") {
+                    type = NavType.StringType
+                    defaultValue = ""
                 }
             )
         ) { backStackEntry ->
@@ -109,12 +115,19 @@ fun AnimeXNavGraph(
             } catch (e: Exception) {
                 null
             }
+            val rawLocal = backStackEntry.arguments?.getString("localPath") ?: ""
+            val localPath = try {
+                java.net.URLDecoder.decode(rawLocal, "UTF-8").takeIf { it.isNotBlank() }
+            } catch (e: Exception) {
+                null
+            }
 
             PlayerScreen(
                 episodeId = episodeId,
                 animeTitle = animeTitle,
                 episodeNumber = epNum,
                 poster = poster,
+                localPath = localPath,
                 onBackClick = { navController.popBackStack() }
             )
         }

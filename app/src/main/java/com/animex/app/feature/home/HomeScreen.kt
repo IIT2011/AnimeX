@@ -45,7 +45,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun HomeScreen(
     onAnimeClick: (Long) -> Unit,
-    onPlayClick: (episodeId: Long, animeTitle: String?, episodeNumber: Int?, poster: String?) -> Unit,
+    onPlayClick: (episodeId: Long, animeTitle: String?, episodeNumber: Int?, poster: String?, localPath: String?) -> Unit,
     onSearchClick: () -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
@@ -246,7 +246,7 @@ fun CyberTopBar(
 fun RollingRecommendationsCarousel(
     slides: List<ScoredAnime>,
     onAnimeClick: (Long) -> Unit,
-    onPlayClick: (episodeId: Long, animeTitle: String?, episodeNumber: Int?, poster: String?) -> Unit
+    onPlayClick: (episodeId: Long, animeTitle: String?, episodeNumber: Int?, poster: String?, localPath: String?) -> Unit
 ) {
     val pagerState = rememberPagerState(pageCount = { slides.size })
 
@@ -414,7 +414,7 @@ fun RollingRecommendationsCarousel(
                             },
                             onClick = {
                                 anime.episodeId?.let { epId ->
-                                    onPlayClick(epId, anime.title, anime.episodeNumber ?: 1, anime.poster)
+                                    onPlayClick(epId, anime.title, anime.episodeNumber ?: 1, anime.poster, null)
                                 } ?: onAnimeClick(anime.id)
                             }
                         )

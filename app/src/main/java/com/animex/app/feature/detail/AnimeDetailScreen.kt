@@ -16,6 +16,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,8 +33,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.animex.app.core.recommendation.UserInterestEngine
 import com.animex.app.core.designsystem.*
+import com.animex.app.core.download.DownloadRepository
 import com.animex.app.core.network.NetworkClient
 import com.animex.app.core.session.UserSessionRepository
+import kotlinx.coroutines.delay
 
 @Composable
 fun AnimeDetailScreen(
@@ -43,6 +48,9 @@ fun AnimeDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val watchlist by UserSessionRepository.watchlist.collectAsState()
+
+    var showDownloadDialog by remember { mutableStateOf(false) }
+    var downloadToastMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(animeId) {
         viewModel.loadAnime(animeId)
@@ -156,14 +164,27 @@ fun AnimeDetailScreen(
                             Spacer(modifier = Modifier.height(16.dp))
 
                             val isInWatchlist = watchlist.any { it.id == anime.id }
-                            CyberButton(
-                                text = if (isInWatchlist) "✓ IN WATCHLIST" else "+ ADD TO WATCHLIST",
-                                isPrimary = !isInWatchlist,
-                                onClick = {
-                                    UserSessionRepository.toggleWatchlist(context, anime)
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                CyberButton(
+                                    text = if (isInWatchlist) "✓ IN WATCHLIST" else "+ ADD TO WATCHLIST",
+                                    isPrimary = !isInWatchlist,
+                                    onClick = {
+                                        UserSessionRepository.toggleWatchlist(context, anime)
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                CyberButton(
+                                    text = "⬇ DOWNLOAD",
+                                    isPrimary = true,
+                                    onClick = {
+                                        showDownloadDialog = true
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
 
                             Spacer(modifier = Modifier.height(16.dp))
 
@@ -192,7 +213,28 @@ fun AnimeDetailScreen(
                                     fontFamily = FontFamily.Monospace,
                                     letterSpacing = 1.sp
                                 )
-                                CyberBadge(text = "${episodes.size} EPS", accentColor = NeonCyan)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CyberBadge(text = "${episodes.size} EPS", accentColor = NeonCyan)
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(NeonCyan.copy(alpha = 0.15f))
+                                            .border(1.dp, NeonCyan, RoundedCornerShape(6.dp))
+                                            .clickable { showDownloadDialog = true }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "BATCH ⬇",
+                                            color = NeonCyan,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
@@ -230,6 +272,59 @@ fun AnimeDetailScreen(
                                 }
                             }
                         }
+                    }
+
+                    // Community Transmissions / Comments Section
+                    item {
+                        Spacer(modifier = Modifier.height(28.dp))
+                        CommentsSection(animeId = anime.id)
+                        Spacer(modifier = Modifier.height(50.dp))
+                    }
+                }
+
+                if (showDownloadDialog) {
+                    DownloadDialog(
+                        animeTitle = anime.title,
+                        episodes = episodes,
+                        onDismiss = { showDownloadDialog = false },
+                        onStartDownload = { selectedEps, destination, quality, audioTrack, subtitle ->
+                            DownloadRepository.enqueueBatch(
+                                context = context,
+                                animeId = anime.id,
+                                animeTitle = anime.title,
+                                animePoster = anime.poster,
+                                episodes = selectedEps,
+                                destination = destination,
+                                quality = quality,
+                                audioTrack = audioTrack,
+                                subtitle = subtitle
+                            )
+                            downloadToastMessage = "Queued ${selectedEps.size} episodes for download!"
+                        }
+                    )
+                }
+
+                downloadToastMessage?.let { msg ->
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 24.dp, start = 20.dp, end = 20.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(VoidDark)
+                            .border(1.dp, NeonCyan, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                    ) {
+                        Text(
+                            text = msg,
+                            color = NeonCyan,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    LaunchedEffect(msg) {
+                        delay(3500)
+                        downloadToastMessage = null
                     }
                 }
             }

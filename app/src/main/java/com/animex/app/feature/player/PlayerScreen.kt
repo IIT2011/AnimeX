@@ -64,13 +64,40 @@ fun PlayerScreen(
     animeTitle: String? = null,
     episodeNumber: Int? = null,
     poster: String? = null,
+    localPath: String? = null,
     onBackClick: () -> Unit,
     viewModel: PlayerViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isOffline = remember(localPath) {
+        !localPath.isNullOrBlank() && java.io.File(localPath).exists()
+    }
 
-    LaunchedEffect(episodeId) {
-        viewModel.loadEpisodeStream(episodeId)
+    LaunchedEffect(episodeId, isOffline) {
+        if (!isOffline && episodeId > 0) {
+            viewModel.loadEpisodeStream(episodeId)
+        }
+    }
+
+    val effectiveState = remember(uiState, isOffline, localPath) {
+        if (isOffline) {
+            val file = java.io.File(localPath!!)
+            val localSource = PlaybackSourceDto(
+                kind = "local",
+                url = "file://${file.absolutePath}",
+                server = "Local Offline Storage"
+            )
+            PlayerUiState.Ready(
+                playData = com.animex.app.core.network.model.PlayResponseDto(
+                    episodeId = episodeId,
+                    sources = listOf(localSource)
+                ),
+                activeSource = localSource,
+                currentTrack = "offline"
+            )
+        } else {
+            uiState
+        }
     }
 
     Box(
@@ -78,7 +105,7 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(VoidDark)
     ) {
-        when (val state = uiState) {
+        when (val state = effectiveState) {
             is PlayerUiState.Loading -> {
                 Column(
                     modifier = Modifier.align(Alignment.Center),
@@ -200,34 +227,47 @@ fun CyberVideoSurface(
 
     // Build ExoPlayer with HLS source & Subtitles
     val exoPlayer = remember(source.url) {
-        val okHttpClient = NetworkClient.createMedia3OkHttpClient(source.mediaHeaders)
-        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
-
-        val subtitleConfigs = source.subtitles.map { sub ->
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
-                .setMimeType(MimeTypes.TEXT_VTT)
-                .setLanguage(sub.lang)
-                .setLabel(sub.label)
-                .setSelectionFlags(if (sub.default) C.SELECTION_FLAG_DEFAULT else 0)
-                .build()
-        }
-
-        val mediaItem = MediaItem.Builder()
-            .setUri(source.url)
-            .setMimeType(MimeTypes.APPLICATION_M3U8)
-            .setSubtitleConfigurations(subtitleConfigs)
-            .build()
-
-        val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(mediaItem)
-
-        ExoPlayer.Builder(context).build().apply {
-            setMediaSource(mediaSource)
-            prepare()
-            if (ready.initialSeekMs > 0L) {
-                seekTo(ready.initialSeekMs)
+        val isLocal = source.kind == "local" || source.url?.startsWith("file://") == true
+        if (isLocal) {
+            ExoPlayer.Builder(context).build().apply {
+                val mediaItem = MediaItem.fromUri(Uri.parse(source.url))
+                setMediaItem(mediaItem)
+                prepare()
+                if (ready.initialSeekMs > 0L) {
+                    seekTo(ready.initialSeekMs)
+                }
+                playWhenReady = true
             }
-            playWhenReady = true
+        } else {
+            val okHttpClient = NetworkClient.createMedia3OkHttpClient(source.mediaHeaders)
+            val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+
+            val subtitleConfigs = source.subtitles.map { sub ->
+                MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
+                    .setMimeType(MimeTypes.TEXT_VTT)
+                    .setLanguage(sub.lang)
+                    .setLabel(sub.label)
+                    .setSelectionFlags(if (sub.default) C.SELECTION_FLAG_DEFAULT else 0)
+                    .build()
+            }
+
+            val mediaItem = MediaItem.Builder()
+                .setUri(source.url)
+                .setMimeType(MimeTypes.APPLICATION_M3U8)
+                .setSubtitleConfigurations(subtitleConfigs)
+                .build()
+
+            val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(mediaItem)
+
+            ExoPlayer.Builder(context).build().apply {
+                setMediaSource(mediaSource)
+                prepare()
+                if (ready.initialSeekMs > 0L) {
+                    seekTo(ready.initialSeekMs)
+                }
+                playWhenReady = true
+            }
         }
     }
 
