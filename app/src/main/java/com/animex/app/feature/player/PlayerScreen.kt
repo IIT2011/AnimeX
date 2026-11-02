@@ -82,10 +82,28 @@ fun PlayerScreen(
     val effectiveState = remember(uiState, isOffline, localPath) {
         if (isOffline) {
             val file = java.io.File(localPath!!)
+            val parent = file.parentFile
+            val base = file.nameWithoutExtension
+            val localSubs = mutableListOf<SubtitleDto>()
+            if (parent != null && parent.exists()) {
+                val vtt = java.io.File(parent, "$base.vtt")
+                val srt = java.io.File(parent, "$base.srt")
+                val enSrt = java.io.File(parent, "$base.en.srt")
+                if (vtt.exists()) {
+                    localSubs.add(SubtitleDto(lang = "en", label = "English (VTT)", url = "file://${vtt.absolutePath}", default = true))
+                }
+                if (srt.exists()) {
+                    localSubs.add(SubtitleDto(lang = "en", label = "English (SRT)", url = "file://${srt.absolutePath}", default = localSubs.isEmpty()))
+                } else if (enSrt.exists()) {
+                    localSubs.add(SubtitleDto(lang = "en", label = "English (SRT)", url = "file://${enSrt.absolutePath}", default = localSubs.isEmpty()))
+                }
+            }
+
             val localSource = PlaybackSourceDto(
                 kind = "local",
                 url = "file://${file.absolutePath}",
-                server = "Local Offline Storage"
+                server = "Local Offline Storage",
+                subtitles = localSubs
             )
             PlayerUiState.Ready(
                 playData = com.animex.app.core.network.model.PlayResponseDto(
@@ -225,12 +243,28 @@ fun CyberVideoSurface(
         isFullscreen = false
     }
 
-    // Build ExoPlayer with HLS source & Subtitles
+    // Build ExoPlayer with HLS / Local source & Subtitles
     val exoPlayer = remember(source.url) {
         val isLocal = source.kind == "local" || source.url?.startsWith("file://") == true
         if (isLocal) {
+            val localSubs = source.subtitles.map { sub ->
+                val mime = if (sub.url.endsWith(".srt", ignoreCase = true)) {
+                    MimeTypes.APPLICATION_SUBRIP
+                } else {
+                    MimeTypes.TEXT_VTT
+                }
+                MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
+                    .setMimeType(mime)
+                    .setLanguage(sub.lang)
+                    .setLabel(sub.label)
+                    .setSelectionFlags(if (sub.default) C.SELECTION_FLAG_DEFAULT else 0)
+                    .build()
+            }
             ExoPlayer.Builder(context).build().apply {
-                val mediaItem = MediaItem.fromUri(Uri.parse(source.url))
+                val mediaItem = MediaItem.Builder()
+                    .setUri(Uri.parse(source.url))
+                    .setSubtitleConfigurations(localSubs)
+                    .build()
                 setMediaItem(mediaItem)
                 prepare()
                 if (ready.initialSeekMs > 0L) {
