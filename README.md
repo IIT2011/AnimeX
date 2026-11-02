@@ -9,8 +9,8 @@
 **Futuristic Native Android & Android TV Anime Streaming Client**
 
 [![Release](https://img.shields.io/github/v/release/IIT2011/AnimeX?style=for-the-badge&color=00F0FF&label=Release)](https://github.com/IIT2011/AnimeX/releases/latest)
-[![Download Mobile APK](https://img.shields.io/badge/Mobile%20APK-AnimeX--v1.1.apk-00F0FF?style=for-the-badge&logo=android)](https://github.com/IIT2011/AnimeX/releases/tag/AnimeX-V1.1)
-[![Download TV APK](https://img.shields.io/badge/Android%20TV%20APK-AnimeX--tv--V1.0.apk-FF0055?style=for-the-badge&logo=androidtv)](https://github.com/IIT2011/AnimeX/releases/tag/AnimeX-tv-V1.0)
+[![Download Mobile APK](https://img.shields.io/badge/Mobile%20APK-AnimeX--V1.1.apk-00F0FF?style=for-the-badge&logo=android)](https://github.com/IIT2011/AnimeX/releases/download/AnimeX-V1.1/AnimeX-V1.1.apk)
+[![Download TV APK](https://img.shields.io/badge/Android%20TV%20APK-AnimeX--tv--1.0.apk-FF0055?style=for-the-badge&logo=androidtv)](https://github.com/IIT2011/AnimeX/releases/download/AnimeX-V1.1/AnimeX-tv-1.0.apk)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV-FF007F?style=for-the-badge&logo=android)](https://github.com/IIT2011/AnimeX)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=for-the-badge&logo=kotlin)](https://kotlinlang.org)
 
