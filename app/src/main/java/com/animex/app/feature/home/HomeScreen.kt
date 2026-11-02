@@ -16,6 +16,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -38,8 +39,11 @@ import coil.compose.AsyncImage
 import com.animex.app.R
 import com.animex.app.core.recommendation.ScoredAnime
 import com.animex.app.core.designsystem.*
+import com.animex.app.core.download.DownloadRepository
+import com.animex.app.core.download.DownloadStatus
 import com.animex.app.core.network.NetworkClient
 import com.animex.app.core.network.model.AnimeDto
+import com.animex.app.feature.account.ExpandedDownloadsView
 import kotlinx.coroutines.delay
 
 @Composable
@@ -50,11 +54,25 @@ fun HomeScreen(
     viewModel: HomeViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var isDownloadsExpanded by remember { mutableStateOf(false) }
+
+    if (isDownloadsExpanded) {
+        ExpandedDownloadsView(
+            onBackClick = { isDownloadsExpanded = false },
+            onPlayOffline = { localPath, animeTitle, epNum ->
+                onPlayClick(0L, animeTitle, epNum, null, localPath)
+            }
+        )
+        return
+    }
 
     Scaffold(
         containerColor = VoidDark,
         topBar = {
-            CyberTopBar(onSearchClick = onSearchClick)
+            CyberTopBar(
+                onSearchClick = onSearchClick,
+                onDownloadsClick = { isDownloadsExpanded = true }
+            )
         }
     ) { paddingValues ->
         Box(
@@ -173,8 +191,14 @@ fun HomeScreen(
 
 @Composable
 fun CyberTopBar(
-    onSearchClick: () -> Unit = {}
+    onSearchClick: () -> Unit = {},
+    onDownloadsClick: () -> Unit = {}
 ) {
+    val allTasks by DownloadRepository.tasks.collectAsState()
+    val activeCount = remember(allTasks) {
+        allTasks.count { it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -220,21 +244,69 @@ fun CyberTopBar(
             )
         }
 
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(ObsidianCard)
-                .border(1.dp, GlassBorder, RoundedCornerShape(8.dp))
-                .cyberBounceClick(onClick = onSearchClick),
-            contentAlignment = Alignment.Center
+        // Right Icons: Search + Download
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = "Search",
-                tint = NeonCyan,
-                modifier = Modifier.size(20.dp)
-            )
+            // Search button
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(ObsidianCard)
+                    .border(1.dp, GlassBorder, RoundedCornerShape(8.dp))
+                    .cyberBounceClick(onClick = onSearchClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search",
+                    tint = NeonCyan,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Download Icon (shows pulsating badge when downloading or queued)
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (activeCount > 0) NeonCyan.copy(alpha = 0.18f) else ObsidianCard)
+                    .border(
+                        1.dp,
+                        if (activeCount > 0) NeonCyan else GlassBorder,
+                        RoundedCornerShape(8.dp)
+                    )
+                    .cyberBounceClick(onClick = onDownloadsClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FileDownload,
+                    contentDescription = "Downloads",
+                    tint = if (activeCount > 0) NeonCyan else TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+
+                if (activeCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 3.dp, y = (-3).dp)
+                            .size(15.dp)
+                            .clip(CircleShape)
+                            .background(NeonMagenta),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = activeCount.toString(),
+                            color = Color.White,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
         }
     }
 }

@@ -1,6 +1,8 @@
 package com.animex.app.core.download
 
 import android.content.Context
+import android.media.MediaScannerConnection
+import android.os.Build
 import android.os.Environment
 import android.util.Log
 import com.animex.app.core.network.NetworkClient
@@ -86,7 +88,17 @@ object DownloadRepository {
         val baseDir = when (destination) {
             DownloadDestination.EXTERNAL -> {
                 val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                File(publicDownloads, "AnimeX/$sanitizedTitle").apply { mkdirs() }
+                val targetDir = File(publicDownloads, "AnimeX/$sanitizedTitle")
+                if (!targetDir.exists()) {
+                    try { targetDir.mkdirs() } catch (_: Exception) {}
+                }
+                if (targetDir.exists() && targetDir.canWrite()) {
+                    targetDir
+                } else {
+                    val fallback = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir, "AnimeX/$sanitizedTitle")
+                    fallback.apply { mkdirs() }
+                    fallback
+                }
             }
             DownloadDestination.IN_APP -> {
                 val internalMovies = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) 
@@ -222,7 +234,7 @@ object DownloadRepository {
                     }
 
                     val progress = ((index + 1).toFloat() / totalSegs.toFloat()).coerceIn(0.05f, 0.99f)
-                    updateTask(context, task.id) {
+                    updateTask(context, task.id, persist = (index % 10 == 0)) {
                         it.copy(
                             progress = progress,
                             downloadedBytes = totalBytesWritten,
@@ -233,13 +245,23 @@ object DownloadRepository {
             }
 
             // Completed!
-            updateTask(context, task.id) {
+            updateTask(context, task.id, persist = true) {
                 it.copy(
                     status = DownloadStatus.COMPLETED,
                     progress = 1.0f,
                     downloadedBytes = targetFile.length(),
                     totalBytes = targetFile.length()
                 )
+            }
+            if (task.destination == DownloadDestination.EXTERNAL) {
+                try {
+                    MediaScannerConnection.scanFile(
+                        context,
+                        arrayOf(targetFile.absolutePath),
+                        arrayOf("video/mp4"),
+                        null
+                    )
+                } catch (_: Exception) {}
             }
         } else {
             // Direct file download
@@ -268,13 +290,23 @@ object DownloadRepository {
                 }
             }
 
-            updateTask(context, task.id) {
+            updateTask(context, task.id, persist = true) {
                 it.copy(
                     status = DownloadStatus.COMPLETED,
                     progress = 1.0f,
                     downloadedBytes = targetFile.length(),
                     totalBytes = targetFile.length()
                 )
+            }
+            if (task.destination == DownloadDestination.EXTERNAL) {
+                try {
+                    MediaScannerConnection.scanFile(
+                        context,
+                        arrayOf(targetFile.absolutePath),
+                        arrayOf("video/mp4"),
+                        null
+                    )
+                } catch (_: Exception) {}
             }
         }
     }
@@ -330,14 +362,23 @@ object DownloadRepository {
         }
     }
 
-    private fun updateTask(context: Context, taskId: String, transform: (DownloadTask) -> DownloadTask) {
+    private fun updateTask(context: Context, taskId: String, persist: Boolean = true, transform: (DownloadTask) -> DownloadTask) {
         val list = _tasks.value.toMutableList()
         val index = list.indexOfFirst { it.id == taskId }
         if (index >= 0) {
             list[index] = transform(list[index])
             _tasks.value = list
-            saveTasks(context)
+            if (persist) {
+                saveTasks(context)
+            }
         }
+    }
+
+    fun retryDownload(context: Context, taskId: String) {
+        updateTask(context, taskId, persist = true) {
+            it.copy(status = DownloadStatus.QUEUED, error = null, progress = 0.05f)
+        }
+        processNextDownload(context)
     }
 
     fun cancelOrDelete(context: Context, taskId: String) {

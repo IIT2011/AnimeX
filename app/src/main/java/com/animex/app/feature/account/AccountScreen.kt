@@ -43,8 +43,6 @@ import coil.compose.AsyncImage
 import com.animex.app.R
 import com.animex.app.core.auth.GoogleAuthManager
 import com.animex.app.core.designsystem.*
-import com.animex.app.core.download.AnimeDownloadGroup
-import com.animex.app.core.download.DownloadRepository
 import com.animex.app.core.network.NetworkClient
 import com.animex.app.core.session.UserSessionRepository
 import com.animex.app.core.network.model.AnimeDto
@@ -61,7 +59,6 @@ fun AccountScreen(
     var manualEmailInput by remember { mutableStateOf("") }
     var showEditUsernameDialog by remember { mutableStateOf(false) }
     var isWatchlistExpanded by remember { mutableStateOf(false) }
-    var isDownloadsExpanded by remember { mutableStateOf(false) }
 
     val accountChooserLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -84,16 +81,6 @@ fun AccountScreen(
             onAnimeClick = onAnimeClick,
             onPlayClick = { epId, title, epNum, poster ->
                 onPlayClick(epId, title, epNum, poster, null)
-            }
-        )
-        return
-    }
-
-    if (isDownloadsExpanded) {
-        ExpandedDownloadsView(
-            onBackClick = { isDownloadsExpanded = false },
-            onPlayOffline = { localPath, animeTitle, epNum ->
-                onPlayClick(0L, animeTitle, epNum, null, localPath)
             }
         )
         return
@@ -336,89 +323,6 @@ fun AccountScreen(
                                     anime = anime,
                                     onClick = { onAnimeClick(anime.id) },
                                     onRemoveClick = { viewModel.removeFromWatchlist(anime.id) }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // In-App Downloads Section
-            item {
-                val allTasks by DownloadRepository.tasks.collectAsState()
-                val inAppGroups = remember(allTasks) {
-                    DownloadRepository.getInAppGroups()
-                }
-
-                Column(modifier = Modifier.padding(top = 24.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "IN-APP DOWNLOADS",
-                            color = TextPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            letterSpacing = 1.sp
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            CyberBadge(text = "${inAppGroups.size} ANIMES", accentColor = NeonCyan)
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(NeonCyan.copy(alpha = 0.15f))
-                                    .border(1.dp, NeonCyan, RoundedCornerShape(6.dp))
-                                    .clickable { isDownloadsExpanded = true }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = "EXPAND ⤢",
-                                    color = NeonCyan,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    if (inAppGroups.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 8.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(ObsidianCard)
-                                .border(1.dp, GlassBorder, RoundedCornerShape(10.dp))
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "NO IN-APP DOWNLOADS • DOWNLOAD ANY EPISODE TO PLAY OFFLINE",
-                                color = TextSecondary,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    } else {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(inAppGroups) { group ->
-                                InAppDownloadRailCard(
-                                    group = group,
-                                    onClick = { isDownloadsExpanded = true }
                                 )
                             }
                         }
@@ -1142,59 +1046,5 @@ fun PreferenceToggle(
                 uncheckedTrackColor = ObsidianSurface
             )
         )
-    }
-}
-
-@Composable
-fun InAppDownloadRailCard(
-    group: AnimeDownloadGroup,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .width(135.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(ObsidianCard)
-            .border(1.dp, CardBorderGlowBrush, RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
-    ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(180.dp)
-            ) {
-                AsyncImage(
-                    model = NetworkClient.resolvePosterUrl(group.animePoster),
-                    contentDescription = group.animeTitle,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                ) {
-                    CyberBadge(text = "${group.completedCount} EPS", accentColor = NeonCyan)
-                }
-            }
-            Column(modifier = Modifier.padding(8.dp)) {
-                Text(
-                    text = group.animeTitle,
-                    color = TextPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = group.formattedTotalSize,
-                    color = TextSecondary,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
     }
 }
