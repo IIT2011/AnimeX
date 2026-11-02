@@ -18,3 +18,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "AnimeX"
 include(":app")
+include(":tv")

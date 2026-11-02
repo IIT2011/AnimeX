@@ -6,18 +6,35 @@
 
 # AnimeX
 
-**Futuristic Native Android Anime Streaming Client**
+**Futuristic Native Android & Android TV Anime Streaming Client**
 
 [![Release](https://img.shields.io/github/v/release/IIT2011/AnimeX?style=for-the-badge&color=00F0FF&label=Release)](https://github.com/IIT2011/AnimeX/releases/latest)
 [![Download APK](https://img.shields.io/badge/Download-AnimeX--v1.1.apk-00F0FF?style=for-the-badge&logo=android)](https://github.com/IIT2011/AnimeX/releases/latest)
-[![Platform](https://img.shields.io/badge/Platform-Android-FF007F?style=for-the-badge&logo=android)](https://github.com/IIT2011/AnimeX)
+[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV-FF007F?style=for-the-badge&logo=android)](https://github.com/IIT2011/AnimeX)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=for-the-badge&logo=kotlin)](https://kotlinlang.org)
 
 </div>
 
 ---
 
-AnimeX is a high-performance native Android anime streaming client built with **Kotlin** and **Jetpack Compose**, featuring a **Cyber-HUD / Neo-Tokyo Minimalist** design system, batch & individual HLS anime downloader, interactive comments, on-device personalized recommendation engine, real Google Cloud sync, and native offline playback.
+AnimeX is a high-performance native Android & Android TV anime streaming client built with **Kotlin** and **Jetpack Compose**, featuring a **Cyber-HUD / Neo-Tokyo Minimalist** design system, a dedicated 10-foot D-pad Leanback experience for Android TVs, batch & individual HLS anime downloader, interactive comments, on-device personalized recommendation engine, real Google Cloud sync, and native offline playback.
+
+---
+
+## 📺 Dedicated Android TV Experience (`:tv`)
+
+AnimeX now features a standalone, optimized **Android TV & Google TV** module (`tv/`) crafted specifically for 10-foot viewing and remote control (D-pad) navigation:
+
+- **10-Foot Cyber-HUD UI:** Immersive 1080p/4K landscape UI with high-contrast neon focus states (1.08x scale-up, glowing cyan/magenta border transitions).
+- **Dynamic Hero Billboard:** Top billboard dynamically updates backdrops, ratings, synopsis, and metadata as you navigate across shelves below.
+- **Horizontal Content Shelves:** "Trending On AnimeX", "Recommended For You", "Latest Broadcasts", "Top Rated Airing", and "All-Time Popular".
+- **Leanback TV Video Player:** Full D-pad remote mapping:
+  - `OK / Center`: Play / Pause toggle with HUD auto-hide after 4 seconds.
+  - `◀ / ▶`: Instant 10-second seek backward / forward with on-screen HUD badge.
+  - `▲ Up`: In-player quick horizontal Episode Drawer (switch episodes without leaving playback).
+  - `▼ Down`: Stream resolution (1080p / 720p / 480p) & audio selector.
+- **On-Screen D-Pad Keypad & Search:** Grid keyboard designed for TV remote navigation with instant live search suggestions.
+- **Android TV Launcher Integration:** Dedicated `LEANBACK_LAUNCHER` intent and 16:9 high-res TV banner (`tv_banner.png`).
 
 ---
 
@@ -47,32 +64,35 @@ AnimeX is a high-performance native Android anime streaming client built with **
 
 ```
 animex/
-├── app/
+├── app/                              # Mobile Android Application (Phone & Tablet)
 │   ├── src/main/
 │   │   ├── AndroidManifest.xml
 │   │   └── java/com/animex/app/
-│   │       ├── MainActivity.kt               # Edge-to-edge Compose host
-│   │       ├── AnimeXApp.kt                  # Application base & repository bootstrapper
-│   │       ├── core/
-│   │       │   ├── designsystem/             # Cyber-HUD Design System (Void Dark, Neon Cyan & Magenta)
-│   │       │   ├── network/                  # Network layer with mirror failover & Referer injector
-│   │       │   ├── auth/                     # Google account integration & hidden cloud sync
-│   │       │   ├── session/                  # User session store for watchlists, history & username
-│   │       │   ├── download/                 # HLS stream segment downloader & task manager
-│   │       │   ├── comment/                  # Community transmissions & comments repository
-│   │       │   └── recommendation/           # On-device interest-based recommendation engine
-│   │       ├── feature/
-│   │       │   ├── home/                     # Rolling hero recommendations & personalized rails
-│   │       │   ├── genre/                    # Interactive genre categories explorer
-│   │       │   ├── schedule/                 # Broadcast schedule timeline with time picker
-│   │       │   ├── detail/                   # Episode lists, metadata HUD, batch download & comments
-│   │       │   ├── player/                   # Media3 ExoPlayer with online HLS & offline playback
-│   │       │   ├── search/                   # Real-time search with filter drawer
-│   │       │   └── account/                  # 1-tap Google sync, alias editor, expandable watchlists & downloads
-│   │       └── navigation/                   # Compose Navigation graph
+│   │       ├── MainActivity.kt       # Edge-to-edge Compose host
+│   │       ├── AnimeXApp.kt          # Application base & repository bootstrapper
+│   │       ├── core/                 # Design system, network, download, comment & sync
+│   │       ├── feature/              # Home, genre, schedule, detail, player, search & account
+│   │       └── navigation/           # Compose Navigation graph
+│   └── build.gradle.kts
+├── tv/                               # Android TV / Google TV 10-Foot Application
+│   ├── src/main/
+│   │   ├── AndroidManifest.xml       # Leanback launcher & TV features
+│   │   ├── java/com/animex/tv/
+│   │   │   ├── TVMainActivity.kt     # D-pad remote navigation & leanback host
+│   │   │   ├── AnimeXTVApp.kt        # TV application base
+│   │   │   ├── theme/TVTheme.kt      # Cyber TV OLED theme & remote focus modifiers
+│   │   │   ├── components/           # TVTopNav, TVCard, TVHeroBillboard, TVEpisodeCard
+│   │   │   ├── ui/home/              # Dynamic billboard & horizontal content shelves
+│   │   │   ├── ui/detail/            # 16:9 split detail view & episode carousel
+│   │   │   ├── ui/player/            # 10-foot remote ExoPlayer (Seek, Up/Down drawers)
+│   │   │   ├── ui/search/            # D-pad virtual keyboard & live search grid
+│   │   │   ├── ui/genre/             # TV genre pills & archive browser
+│   │   │   ├── ui/schedule/          # Broadcast schedule tracker
+│   │   │   └── ui/watchlist/         # Saved watchlist grid
+│   │   └── res/drawable/tv_banner.png# 16:9 Leanback banner for Android TV home
 │   └── build.gradle.kts
 ├── gradle/
-│   └── libs.versions.toml                    # Version catalog (Compose, Media3, Coil, Kotlinx)
+│   └── libs.versions.toml            # Version catalog (Compose, Media3, Coil, Kotlinx)
 ├── build.gradle.kts
 └── settings.gradle.kts
 ```
@@ -113,5 +133,12 @@ animex/
    git clone https://github.com/IIT2011/AnimeX.git
    ```
 2. Open the project folder in **Android Studio** (Koala, Ladybug, or newer).
-3. Connect an Android device (USB debugging enabled) or launch an Android Emulator (API 26+).
-4. Click **Run ▶** (`Shift + F10`).
+3. Connect an Android phone, tablet, or Android TV device / emulator (API 26+).
+4. Select the target run configuration:
+   - **`app`**: Mobile & tablet Android application
+   - **`tv`**: 10-foot Android TV & Google TV application
+5. Click **Run ▶** (`Shift + F10`) or assemble via CLI:
+   ```bash
+   ./gradlew :app:assembleRelease   # Generates mobile APK
+   ./gradlew :tv:assembleRelease    # Generates Android TV APK
+   ```
