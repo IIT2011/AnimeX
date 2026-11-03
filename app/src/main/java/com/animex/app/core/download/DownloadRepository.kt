@@ -96,6 +96,7 @@ object DownloadRepository {
         audioTrack: String = "sub",
         subtitle: String? = "English"
     ) {
+        val appContext = context.applicationContext
         val sanitizedTitle = sanitizeFileName(animeTitle)
         val baseDir = when (destination) {
             DownloadDestination.EXTERNAL -> {
@@ -107,20 +108,20 @@ object DownloadRepository {
                     val ok = testFile.createNewFile()
                     if (ok) testFile.delete()
                     true
-                } catch (_: Exception) {
+                } catch (_: Throwable) {
                     false
                 }
-                if (canWritePublic || targetDir.exists()) {
+                if (canWritePublic) {
                     targetDir
                 } else {
-                    val fallback = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir, "AnimeX/$sanitizedTitle")
+                    val fallback = File(appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: appContext.filesDir, "AnimeX/$sanitizedTitle")
                     fallback.apply { mkdirs() }
                     fallback
                 }
             }
             DownloadDestination.IN_APP -> {
-                val internalMovies = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) 
-                    ?: File(context.filesDir, "downloads")
+                val internalMovies = appContext.getExternalFilesDir(Environment.DIRECTORY_MOVIES) 
+                    ?: File(appContext.filesDir, "downloads")
                 File(internalMovies, "AnimeX/$sanitizedTitle").apply { mkdirs() }
             }
         }
@@ -151,34 +152,35 @@ object DownloadRepository {
 
         val updated = _tasks.value.toMutableList().apply { addAll(newTasks) }
         _tasks.value = updated
-        saveTasks(context)
+        saveTasks(appContext)
 
         // Launch Foreground Service & worker for queued tasks
-        DownloadService.start(context)
-        processNextDownload(context)
+        DownloadService.start(appContext)
+        processNextDownload(appContext)
     }
 
     private fun processNextDownload(context: Context) {
+        val appContext = context.applicationContext
         val currentList = _tasks.value
         val next = currentList.firstOrNull { it.status == DownloadStatus.QUEUED } ?: return
 
-        DownloadService.start(context)
-        updateTask(context, next.id) { it.copy(status = DownloadStatus.DOWNLOADING, progress = 0.05f) }
+        DownloadService.start(appContext)
+        updateTask(appContext, next.id) { it.copy(status = DownloadStatus.DOWNLOADING, progress = 0.05f) }
 
         val job = scope.launch {
             try {
-                executeDownload(context, next)
-            } catch (e: Exception) {
+                executeDownload(appContext, next)
+            } catch (e: Throwable) {
                 Log.e(TAG, "Download execution failed for ${next.fileName}", e)
-                updateTask(context, next.id) {
+                updateTask(appContext, next.id) {
                     it.copy(
                         status = DownloadStatus.FAILED,
-                        error = e.localizedMessage ?: "Network or playback error"
+                        error = e.localizedMessage ?: "Download error"
                     )
                 }
             } finally {
                 activeJobs.remove(next.id)
-                processNextDownload(context)
+                processNextDownload(appContext)
             }
         }
         activeJobs[next.id] = job
@@ -197,8 +199,26 @@ object DownloadRepository {
         }
 
         val client = NetworkClient.createMedia3OkHttpClient(headers)
-        val targetFile = File(task.targetPath)
-        targetFile.parentFile?.mkdirs()
+        val rawTargetFile = File(task.targetPath)
+        var targetFile = rawTargetFile
+        val canWrite = try {
+            targetFile.parentFile?.mkdirs()
+            val test = File(targetFile.parentFile, ".test_${System.currentTimeMillis()}")
+            if (test.createNewFile()) {
+                test.delete()
+                true
+            } else {
+                false
+            }
+        } catch (_: Throwable) {
+            false
+        }
+        if (!canWrite) {
+            val fallbackDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir, "AnimeX/${sanitizeFileName(task.animeTitle)}")
+            fallbackDir.mkdirs()
+            targetFile = File(fallbackDir, task.fileName)
+            updateTask(context, task.id, persist = true) { it.copy(targetPath = targetFile.absolutePath) }
+        }
 
         if (masterUrl.endsWith(".m3u8") || masterUrl.contains(".m3u8")) {
             // Resolve HLS playlist

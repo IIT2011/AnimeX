@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.animex.app.MainActivity
 import com.animex.app.R
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,7 +26,10 @@ import kotlinx.coroutines.launch
 
 class DownloadService : Service() {
 
-    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Log.e(TAG, "Uncaught error in DownloadService coroutine", throwable)
+    }
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob() + exceptionHandler)
     private var observeJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -36,18 +40,29 @@ class DownloadService : Service() {
 
         fun start(context: Context) {
             try {
-                val intent = Intent(context, DownloadService::class.java)
-                ContextCompat.startForegroundService(context, intent)
-            } catch (e: Exception) {
+                val appContext = context.applicationContext
+                val intent = Intent(appContext, DownloadService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    try {
+                        ContextCompat.startForegroundService(appContext, intent)
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "startForegroundService failed, falling back to startService", e)
+                        appContext.startService(intent)
+                    }
+                } else {
+                    appContext.startService(intent)
+                }
+            } catch (e: Throwable) {
                 Log.e(TAG, "Failed to start DownloadService", e)
             }
         }
 
         fun stop(context: Context) {
             try {
-                val intent = Intent(context, DownloadService::class.java)
-                context.stopService(intent)
-            } catch (e: Exception) {
+                val appContext = context.applicationContext
+                val intent = Intent(appContext, DownloadService::class.java)
+                appContext.stopService(intent)
+            } catch (e: Throwable) {
                 Log.e(TAG, "Failed to stop DownloadService", e)
             }
         }
@@ -59,6 +74,11 @@ class DownloadService : Service() {
         acquireWakeLock()
         startAsForeground()
         observeDownloads()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startAsForeground()
+        return START_NOT_STICKY
     }
 
     private fun acquireWakeLock() {
@@ -90,16 +110,20 @@ class DownloadService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "AnimeX Downloads",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Shows real-time progress for anime video and subtitle downloads"
-                setShowBadge(false)
+            try {
+                val channel = NotificationChannel(
+                    CHANNEL_ID,
+                    "AnimeX Downloads",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Shows real-time progress for anime video and subtitle downloads"
+                    setShowBadge(false)
+                }
+                val manager = getSystemService(NotificationManager::class.java)
+                manager?.createNotificationChannel(channel)
+            } catch (e: Throwable) {
+                Log.w(TAG, "Failed to create notification channel", e)
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
         }
     }
 
@@ -115,13 +139,14 @@ class DownloadService : Service() {
         )
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_download_animex)
             .setContentTitle(title)
             .setContentText(content)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
 
         if (progress in 0..100) {
             builder.setProgress(100, progress, false)
@@ -133,67 +158,84 @@ class DownloadService : Service() {
     }
 
     private fun startAsForeground() {
-        val initialNotification = buildNotification(
-            title = "AnimeX Download Engine",
-            content = "Preparing high-speed download streams...",
-            progress = 0
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                initialNotification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        try {
+            val initialNotification = buildNotification(
+                title = "AnimeX Download Engine",
+                content = "Preparing high-speed download streams...",
+                progress = 0
             )
-        } else {
-            startForeground(NOTIFICATION_ID, initialNotification)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                try {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        initialNotification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    )
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Failed startForeground with type dataSync, falling back to standard", e)
+                    startForeground(NOTIFICATION_ID, initialNotification)
+                }
+            } else {
+                startForeground(NOTIFICATION_ID, initialNotification)
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to startForeground", e)
         }
     }
 
     private fun observeDownloads() {
         observeJob = serviceScope.launch {
             DownloadRepository.tasks.collectLatest { tasks ->
-                val activeTasks = tasks.filter {
-                    it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED
-                }
-
-                if (activeTasks.isEmpty()) {
-                    Log.d(TAG, "No active downloads remaining. Stopping foreground service.")
-                    releaseWakeLock()
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        stopForeground(true)
+                try {
+                    val activeTasks = tasks.filter {
+                        it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED
                     }
-                    stopSelf()
-                    return@collectLatest
+
+                    if (activeTasks.isEmpty()) {
+                        Log.d(TAG, "No active downloads remaining. Stopping foreground service.")
+                        releaseWakeLock()
+                        try {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                                stopForeground(STOP_FOREGROUND_REMOVE)
+                            } else {
+                                @Suppress("DEPRECATION")
+                                stopForeground(true)
+                            }
+                        } catch (e: Throwable) {
+                            Log.w(TAG, "stopForeground error", e)
+                        }
+                        stopSelf()
+                        return@collectLatest
+                    }
+
+                    // Make sure WakeLock is held
+                    if (wakeLock?.isHeld != true) {
+                        acquireWakeLock()
+                    }
+
+                    val current = activeTasks.firstOrNull { it.status == DownloadStatus.DOWNLOADING } ?: activeTasks.first()
+                    val progressPercent = (current.progress * 100).toInt().coerceIn(0, 100)
+                    val totalCount = activeTasks.size
+                    val countText = if (totalCount > 1) " (1/$totalCount)" else ""
+                    val downloadedMb = current.downloadedBytes / (1024.0 * 1024.0)
+                    val totalMb = current.totalBytes / (1024.0 * 1024.0)
+
+                    val content = if (totalMb > 0) {
+                        "EP ${current.episodeNumber} • $progressPercent% (%.1f MB / %.1f MB)$countText".format(downloadedMb, totalMb)
+                    } else {
+                        "EP ${current.episodeNumber} • $progressPercent% (%.1f MB downloaded)$countText".format(downloadedMb)
+                    }
+
+                    val notification = buildNotification(
+                        title = "Downloading: ${current.animeTitle}",
+                        content = content,
+                        progress = progressPercent
+                    )
+                    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                    manager?.notify(NOTIFICATION_ID, notification)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Error updating download notification", e)
                 }
-
-                // Make sure WakeLock is held
-                if (wakeLock?.isHeld != true) {
-                    acquireWakeLock()
-                }
-
-                val current = activeTasks.firstOrNull { it.status == DownloadStatus.DOWNLOADING } ?: activeTasks.first()
-                val progressPercent = (current.progress * 100).toInt().coerceIn(0, 100)
-                val totalCount = activeTasks.size
-                val countText = if (totalCount > 1) " (1/$totalCount)" else ""
-                val downloadedMb = current.downloadedBytes / (1024.0 * 1024.0)
-                val totalMb = current.totalBytes / (1024.0 * 1024.0)
-
-                val content = if (totalMb > 0) {
-                    "EP ${current.episodeNumber} • $progressPercent% (%.1f MB / %.1f MB)$countText".format(downloadedMb, totalMb)
-                } else {
-                    "EP ${current.episodeNumber} • $progressPercent% (%.1f MB downloaded)$countText".format(downloadedMb)
-                }
-
-                val notification = buildNotification(
-                    title = "Downloading: ${current.animeTitle}",
-                    content = content,
-                    progress = progressPercent
-                )
-                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-                manager?.notify(NOTIFICATION_ID, notification)
             }
         }
     }
