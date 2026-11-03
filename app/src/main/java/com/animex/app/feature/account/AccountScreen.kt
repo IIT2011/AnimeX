@@ -38,6 +38,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.animex.app.core.updater.AppUpdateManager
+import com.animex.app.core.updater.UpdateCheckResult
+import com.animex.app.feature.updater.UpdateDialog
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.animex.app.R
@@ -55,6 +59,10 @@ fun AccountScreen(
     viewModel: AccountViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var manualUpdateResult by remember { mutableStateOf<UpdateCheckResult?>(null) }
+    var isCheckingUpdates by remember { mutableStateOf(false) }
     var showManualEmailDialog by remember { mutableStateOf(false) }
     var manualEmailInput by remember { mutableStateOf("") }
     var showEditUsernameDialog by remember { mutableStateOf(false) }
@@ -443,9 +451,73 @@ fun AccountScreen(
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // System Core & Updates
+                    Text(
+                        text = "SYSTEM CORE & UPDATES",
+                        color = NeonCyan,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(ObsidianCard)
+                            .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = "AnimeX Core",
+                                    color = TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Installed: v${AppUpdateManager.CURRENT_VERSION}",
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+
+                            CyberButton(
+                                text = if (isCheckingUpdates) "CHECKING..." else "CHECK UPDATES",
+                                onClick = {
+                                    if (!isCheckingUpdates) {
+                                        isCheckingUpdates = true
+                                        coroutineScope.launch {
+                                            val res = AppUpdateManager.checkForUpdate(context, isTv = false)
+                                            isCheckingUpdates = false
+                                            manualUpdateResult = res
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+
+    if (manualUpdateResult != null) {
+        UpdateDialog(
+            updateInfo = manualUpdateResult!!,
+            onDismiss = { manualUpdateResult = null }
+        )
     }
 
     // Manual Google Email Dialog

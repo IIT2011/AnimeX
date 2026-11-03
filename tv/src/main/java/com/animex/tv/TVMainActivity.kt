@@ -10,12 +10,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.animex.tv.components.TVDestination
 import com.animex.tv.components.TVTopNav
 import com.animex.tv.core.network.NetworkClient
+import com.animex.tv.core.updater.TVAppUpdateManager
+import com.animex.tv.core.updater.TVUpdateCheckResult
 import com.animex.tv.theme.AnimeXTVTheme
 import com.animex.tv.theme.CyberVoid
 import com.animex.tv.ui.detail.TVDetailScreen
@@ -24,6 +27,7 @@ import com.animex.tv.ui.home.TVHomeScreen
 import com.animex.tv.ui.player.TVPlayerScreen
 import com.animex.tv.ui.schedule.TVScheduleScreen
 import com.animex.tv.ui.search.TVSearchScreen
+import com.animex.tv.ui.updater.TVUpdateDialog
 import com.animex.tv.ui.watchlist.TVWatchlistScreen
 import kotlinx.coroutines.launch
 
@@ -55,11 +59,28 @@ class TVMainActivity : ComponentActivity() {
 
 @Composable
 fun TVMainRoot() {
+    val context = LocalContext.current
     var currentDestination by remember { mutableStateOf(TVDestination.HOME) }
     var activeDetailAnimeId by remember { mutableStateOf<Long?>(null) }
     var activePlayerParams by remember { mutableStateOf<TVPlayerParams?>(null) }
+    var tvUpdateInfo by remember { mutableStateOf<TVUpdateCheckResult?>(null) }
 
     val coroutineScope = rememberCoroutineScope()
+
+    // Automatic update check on TV launch
+    LaunchedEffect(Unit) {
+        val res = TVAppUpdateManager.checkForUpdate(context)
+        if (res.hasUpdate) {
+            tvUpdateInfo = res
+        }
+    }
+
+    if (tvUpdateInfo != null) {
+        TVUpdateDialog(
+            updateInfo = tvUpdateInfo!!,
+            onDismiss = { tvUpdateInfo = null }
+        )
+    }
 
     // Back handling for TV remote BACK key
     BackHandler(enabled = activePlayerParams != null || activeDetailAnimeId != null || currentDestination != TVDestination.HOME) {

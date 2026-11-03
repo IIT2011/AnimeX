@@ -1,9 +1,11 @@
 package com.animex.app.core.download
 
+import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import com.animex.app.core.network.NetworkClient
 import com.animex.app.core.network.model.PlayRequest
@@ -13,18 +15,25 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.net.URI
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 object DownloadRepository {
     private const val TAG = "DownloadRepository"
@@ -73,7 +82,7 @@ object DownloadRepository {
     }
 
     fun sanitizeFileName(name: String): String {
-        return name.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
+        return name.replace(Regex("[:/\\\\*?\"<>|]"), " ").replace(Regex("\\s+"), " ").trim()
     }
 
     fun enqueueBatch(
@@ -92,10 +101,16 @@ object DownloadRepository {
             DownloadDestination.EXTERNAL -> {
                 val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 val targetDir = File(publicDownloads, "AnimeX/$sanitizedTitle")
-                if (!targetDir.exists()) {
-                    try { targetDir.mkdirs() } catch (_: Exception) {}
+                val canWritePublic = try {
+                    if (!targetDir.exists()) targetDir.mkdirs()
+                    val testFile = File(targetDir, ".write_test_${System.currentTimeMillis()}")
+                    val ok = testFile.createNewFile()
+                    if (ok) testFile.delete()
+                    true
+                } catch (_: Exception) {
+                    false
                 }
-                if (targetDir.exists() && targetDir.canWrite()) {
+                if (canWritePublic || targetDir.exists()) {
                     targetDir
                 } else {
                     val fallback = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir, "AnimeX/$sanitizedTitle")
@@ -112,7 +127,7 @@ object DownloadRepository {
 
         val newTasks = mutableListOf<DownloadTask>()
         for ((epId, epNum) in episodes) {
-            // Naming format: "<Anime Name + S1 + EP1>" -> e.g. "Solo Leveling S1 EP1.mp4"
+            // Naming format: "<Anime Name + S1 + EP1>" -> e.g. "Mission Yozakura Family S1 EP1.mp4"
             val fileName = "$sanitizedTitle S1 EP$epNum.mp4"
             val targetFile = File(baseDir, fileName)
 
@@ -138,7 +153,8 @@ object DownloadRepository {
         _tasks.value = updated
         saveTasks(context)
 
-        // Launch worker for queued tasks
+        // Launch Foreground Service & worker for queued tasks
+        DownloadService.start(context)
         processNextDownload(context)
     }
 
@@ -146,6 +162,7 @@ object DownloadRepository {
         val currentList = _tasks.value
         val next = currentList.firstOrNull { it.status == DownloadStatus.QUEUED } ?: return
 
+        DownloadService.start(context)
         updateTask(context, next.id) { it.copy(status = DownloadStatus.DOWNLOADING, progress = 0.05f) }
 
         val job = scope.launch {
@@ -201,6 +218,8 @@ object DownloadRepository {
                 masterUrl = masterUrl,
                 masterBody = masterBody,
                 targetVideoFile = targetFile,
+                animeTitle = task.animeTitle,
+                destination = task.destination,
                 preferredLanguage = task.subtitle
             )
 
@@ -221,42 +240,87 @@ object DownloadRepository {
 
             var totalBytesWritten = 0L
             val totalSegs = segments.size
+            val maxBuffered = 12
+            val semaphore = Semaphore(maxBuffered)
+            val buffer = ConcurrentHashMap<Int, ByteArray>()
+            val downloadError = AtomicReference<Throwable?>(null)
 
-            FileOutputStream(targetFile, false).use { outStream ->
-                for ((index, segUrl) in segments.withIndex()) {
-                    val segRequest = Request.Builder().url(segUrl).apply {
-                        headers.forEach { (k, v) -> addHeader(k, v) }
-                    }.build()
+            coroutineScope {
+                val producerJob = launch(Dispatchers.IO) {
+                    for (index in 0 until totalSegs) {
+                        if (downloadError.get() != null || !isActive) break
+                        semaphore.acquire()
 
-                    var success = false
-                    var retries = 3
-                    while (!success && retries > 0) {
-                        try {
-                            client.newCall(segRequest).execute().use { resp ->
-                                if (resp.isSuccessful) {
-                                    val bytes = resp.body?.bytes()
-                                    if (bytes != null) {
-                                        outStream.write(bytes)
-                                        totalBytesWritten += bytes.size
-                                        success = true
+                        launch {
+                            try {
+                                val segUrl = segments[index]
+                                val segRequest = Request.Builder().url(segUrl).apply {
+                                    headers.forEach { (k, v) -> addHeader(k, v) }
+                                }.build()
+
+                                var bytes: ByteArray? = null
+                                var retries = 3
+                                while (bytes == null && retries > 0 && isActive) {
+                                    try {
+                                        client.newCall(segRequest).execute().use { resp ->
+                                            if (resp.isSuccessful) {
+                                                bytes = resp.body?.bytes()
+                                            } else {
+                                                retries--
+                                                if (retries > 0) delay(150)
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        retries--
+                                        if (retries <= 0) throw e
+                                        delay(200)
                                     }
                                 }
+                                if (bytes != null) {
+                                    buffer[index] = bytes!!
+                                } else {
+                                    throw IOException("Failed to fetch video segment $index after retries")
+                                }
+                            } catch (t: Throwable) {
+                                downloadError.compareAndSet(null, t)
                             }
-                        } catch (e: Exception) {
-                            retries--
-                            if (retries <= 0) throw e
                         }
                     }
-
-                    val progress = ((index + 1).toFloat() / totalSegs.toFloat()).coerceIn(0.05f, 0.99f)
-                    updateTask(context, task.id, persist = (index % 10 == 0)) {
-                        it.copy(
-                            progress = progress,
-                            downloadedBytes = totalBytesWritten,
-                            totalBytes = (totalBytesWritten / (index + 1)) * totalSegs
-                        )
-                    }
                 }
+
+                FileOutputStream(targetFile, false).use { outStream ->
+                    var nextToWrite = 0
+                    while (nextToWrite < totalSegs) {
+                        val err = downloadError.get()
+                        if (err != null) {
+                            producerJob.cancel()
+                            throw err
+                        }
+
+                        val chunk = buffer.remove(nextToWrite)
+                        if (chunk != null) {
+                            outStream.write(chunk)
+                            totalBytesWritten += chunk.size
+                            semaphore.release()
+                            nextToWrite++
+
+                            val progress = (nextToWrite.toFloat() / totalSegs.toFloat()).coerceIn(0.05f, 0.99f)
+                            val estTotal = if (nextToWrite > 0) (totalBytesWritten / nextToWrite) * totalSegs else 0L
+                            updateTask(context, task.id, persist = (nextToWrite % 10 == 0 || nextToWrite == totalSegs)) {
+                                it.copy(
+                                    progress = progress,
+                                    downloadedBytes = totalBytesWritten,
+                                    totalBytes = estTotal
+                                )
+                            }
+                        } else {
+                            delay(10)
+                        }
+                    }
+                    outStream.flush()
+                }
+
+                producerJob.join()
             }
 
             // Completed!
@@ -281,6 +345,8 @@ object DownloadRepository {
                 masterUrl = masterUrl,
                 masterBody = null,
                 targetVideoFile = targetFile,
+                animeTitle = task.animeTitle,
+                destination = task.destination,
                 preferredLanguage = task.subtitle
             )
 
@@ -295,7 +361,7 @@ object DownloadRepository {
 
                 FileOutputStream(targetFile).use { out ->
                     body.byteStream().use { input ->
-                        val buffer = ByteArray(32 * 1024)
+                        val buffer = ByteArray(64 * 1024)
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
                             out.write(buffer, 0, read)
@@ -305,6 +371,7 @@ object DownloadRepository {
                                 it.copy(progress = progress, downloadedBytes = bytesCopied, totalBytes = totalLength)
                             }
                         }
+                        out.flush()
                     }
                 }
             }
@@ -387,6 +454,7 @@ object DownloadRepository {
     }
 
     fun retryDownload(context: Context, taskId: String) {
+        DownloadService.start(context)
         updateTask(context, taskId, persist = true) {
             it.copy(status = DownloadStatus.QUEUED, error = null, progress = 0.05f)
         }
@@ -427,6 +495,8 @@ object DownloadRepository {
         masterUrl: String,
         masterBody: String?,
         targetVideoFile: File,
+        animeTitle: String,
+        destination: DownloadDestination,
         preferredLanguage: String?
     ) {
         if (preferredLanguage.isNullOrBlank() || preferredLanguage.equals("None", ignoreCase = true)) {
@@ -532,20 +602,65 @@ object DownloadRepository {
             val baseName = targetVideoFile.nameWithoutExtension
 
             // Write raw VTT format files
-            File(parentDir, "$baseName.vtt").writeText(rawVtt, Charsets.UTF_8)
-            File(parentDir, "$baseName.en.vtt").writeText(rawVtt, Charsets.UTF_8)
+            try {
+                File(parentDir, "$baseName.vtt").writeText(rawVtt, Charsets.UTF_8)
+                File(parentDir, "$baseName.en.vtt").writeText(rawVtt, Charsets.UTF_8)
+            } catch (e: Exception) {
+                Log.w(TAG, "File write for VTT notice: ${e.message}")
+            }
 
             // Convert and write SubRip (.srt) format files for VLC & external players
             val srt = convertVttToSrt(rawVtt)
             if (srt.isNotBlank()) {
-                File(parentDir, "$baseName.srt").writeText(srt, Charsets.UTF_8)
-                File(parentDir, "$baseName.en.srt").writeText(srt, Charsets.UTF_8)
-                File(parentDir, "$baseName.English.srt").writeText(srt, Charsets.UTF_8)
+                try {
+                    File(parentDir, "$baseName.srt").writeText(srt, Charsets.UTF_8)
+                    File(parentDir, "$baseName.en.srt").writeText(srt, Charsets.UTF_8)
+                    File(parentDir, "$baseName.English.srt").writeText(srt, Charsets.UTF_8)
+                } catch (e: Exception) {
+                    Log.w(TAG, "File write for SRT notice: ${e.message}")
+                }
+            }
+
+            // If external download, also write directly into Android's public Downloads/AnimeX/<Title>/ via MediaStore
+            if (destination == DownloadDestination.EXTERNAL) {
+                val cleanFolder = sanitizeFileName(animeTitle)
+                if (srt.isNotBlank()) {
+                    saveSubtitleToMediaStore(context, cleanFolder, "$baseName.srt", srt, "application/x-subrip")
+                    saveSubtitleToMediaStore(context, cleanFolder, "$baseName.en.srt", srt, "application/x-subrip")
+                    saveSubtitleToMediaStore(context, cleanFolder, "$baseName.English.srt", srt, "application/x-subrip")
+                }
+                saveSubtitleToMediaStore(context, cleanFolder, "$baseName.vtt", rawVtt, "text/vtt")
             }
 
             Log.i(TAG, "Downloaded and saved companion subtitles for $baseName successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to download subtitles for ${targetVideoFile.name}", e)
+        }
+    }
+
+    private fun saveSubtitleToMediaStore(
+        context: Context,
+        subFolder: String,
+        fileName: String,
+        content: String,
+        mimeType: String
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        try {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/AnimeX/$subFolder/")
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { out ->
+                    out.write(content.toByteArray(Charsets.UTF_8))
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "MediaStore subtitle write: ${e.message}")
         }
     }
 

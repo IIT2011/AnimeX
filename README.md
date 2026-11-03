@@ -9,8 +9,8 @@
 **Futuristic Native Android & Android TV Anime Streaming Client**
 
 [![Release](https://img.shields.io/github/v/release/IIT2011/AnimeX?style=for-the-badge&color=00F0FF&label=Release)](https://github.com/IIT2011/AnimeX/releases/latest)
-[![Download Mobile APK](https://img.shields.io/badge/Mobile%20APK-AnimeX--V1.1.apk-00F0FF?style=for-the-badge&logo=android)](https://github.com/IIT2011/AnimeX/releases/download/AnimeX-V1.1/AnimeX-V1.1.apk)
-[![Download TV APK](https://img.shields.io/badge/Android%20TV%20APK-AnimeX--tv--1.0.apk-FF0055?style=for-the-badge&logo=androidtv)](https://github.com/IIT2011/AnimeX/releases/download/AnimeX-V1.1/AnimeX-tv-1.0.apk)
+[![Download Mobile APK](https://img.shields.io/badge/Mobile%20APK-AnimeX--V1.2.apk-00F0FF?style=for-the-badge&logo=android)](https://github.com/IIT2011/AnimeX/releases/download/AnimeX-V1.2/AnimeX-V1.2.apk)
+[![Download TV APK](https://img.shields.io/badge/Android%20TV%20APK-AnimeX--tv--v1.1.apk-FF0055?style=for-the-badge&logo=androidtv)](https://github.com/IIT2011/AnimeX/releases/download/AnimeX-V1.2/AnimeX-tv-v1.1.apk)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV-FF007F?style=for-the-badge&logo=android)](https://github.com/IIT2011/AnimeX)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=for-the-badge&logo=kotlin)](https://kotlinlang.org)
 
@@ -18,7 +18,7 @@
 
 ---
 
-AnimeX is a high-performance native Android & Android TV anime streaming client built with **Kotlin** and **Jetpack Compose**, featuring a **Cyber-HUD / Neo-Tokyo Minimalist** design system, a dedicated 10-foot D-pad Leanback experience for Android TVs, batch & individual HLS anime downloader, interactive comments, on-device personalized recommendation engine, real Google Cloud sync, and native offline playback.
+AnimeX is a high-performance native Android & Android TV anime streaming client built with **Kotlin** and **Jetpack Compose**, featuring a **Cyber-HUD / Neo-Tokyo Minimalist** design system, a dedicated 10-foot D-pad Leanback experience for Android TVs, high-speed multi-threaded batch anime downloader with background service, interactive comments, on-device personalized recommendation engine, real Google Cloud sync, companion subtitles for external players (VLC), and native offline playback.
 
 ---
 
@@ -36,28 +36,28 @@ AnimeX now features a standalone, optimized **Android TV & Google TV** module (`
   - `▼ Down`: Stream resolution (1080p / 720p / 480p) & audio selector.
 - **On-Screen D-Pad Keypad & Search:** Grid keyboard designed for TV remote navigation with instant live search suggestions.
 - **Android TV Launcher Integration:** Dedicated `LEANBACK_LAUNCHER` intent and 16:9 high-res TV banner (`tv_banner.png`).
+- **TV Auto-Updater:** Automated startup check with D-pad focusable "UPDATE NOW" dialog.
 
 ---
 
-## What's New in v1.1 ⚡
+## What's New in v1.2 ⚡
 
-1. **📥 Batch & Individual Anime Downloader:**
-   - **External Downloads:** Saves directly to Android storage at `Downloads/AnimeX/<Anime Name>/<Anime Name S1 EP#>.mp4`.
-   - **In-App Downloads:** Saves inside AnimeX for full offline viewing directly from your profile.
-   - **Stream Configurator:** Customizable Video Quality (1080p, 720p, 360p), Audio (Sub/Dub), and Subtitles before starting.
-   - **Batch Episode Selector:** Download entire seasons or select individual episodes with 1 tap.
+1. **⚡ High-Speed Multi-Threaded HLS Segment Downloader:**
+   - Concurrent sliding-window chunk downloading (saturates 180+ Mbps / ~22.5 MB/s fiber connections).
+   - High-throughput OkHttp dispatcher with connection pooling to eliminate TCP latency.
 
-2. **💬 Interactive Anime Transmissions (Comments):**
-   - Live community commenting on any anime title with timestamping, custom avatars, and like counter.
-   - Comments persist locally and survive application restarts.
+2. **🛡️ Lock Screen & Background Download Resilience:**
+   - Android Foreground Service (`DownloadService`) with real-time notification progress bar.
+   - CPU `PARTIAL_WAKE_LOCK` prevents downloads from pausing, timing out, or erroring when the phone is locked or sent to the background.
 
-3. **👤 Profile Alias Customizer & Real-time Availability Check:**
-   - Customize your user handle directly from your Profile card.
-   - Real-time availability verification checks for reserved or taken usernames before claiming.
+3. **🎬 VLC & External Player Subtitles Engine:**
+   - Companion SubRip (`.srt`) and WebVTT (`.vtt`) files generated beside videos in public `Download/AnimeX/<Anime Name>/`.
+   - Automatic registration with Android `MediaScannerConnection` and `MediaStore.Downloads` so VLC on Android immediately detects and displays subtitles.
 
-4. **📂 Fullscreen Expandable Watchlists & Downloads Manager:**
-   - **"Watchlists":** 1-tap expansion from profile covering the full screen with comprehensive 2-column grid and quick play.
-   - **"Downloads":** Complete storage manager showing anime groupings, episode counts, disk space used, and 1-tap offline ExoPlayer playback.
+4. **🚀 Universal Auto-Updater (Mobile & TV):**
+   - Startup release verification comparing installed APK versions against the public GitHub repository.
+   - Clean Cyber-HUD "UPDATE NOW" dialog with direct APK downloading via `DownloadManager`.
+   - Manual "Check for Updates" trigger in Account & Settings.
 
 ---
 

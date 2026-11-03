@@ -1,6 +1,8 @@
 package com.animex.app.core.network
 
 import kotlinx.serialization.json.Json
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -61,7 +63,13 @@ object NetworkClient {
      * Injects the required CDN Referer to bypass anti-hotlinking.
      */
     fun createMedia3OkHttpClient(customHeaders: Map<String, String> = emptyMap()): OkHttpClient {
+        val dispatcher = Dispatcher().apply {
+            maxRequests = 128
+            maxRequestsPerHost = 32
+        }
         return OkHttpClient.Builder()
+            .dispatcher(dispatcher)
+            .connectionPool(ConnectionPool(32, 5, TimeUnit.MINUTES))
             .addInterceptor { chain ->
                 val builder = chain.request().newBuilder()
                     .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
