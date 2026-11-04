@@ -55,12 +55,18 @@ object NetworkClient {
             .create(AnimeXApi::class.java)
     }
 
+    private val mediaConnectionPool = okhttp3.ConnectionPool(16, 5, TimeUnit.MINUTES)
+
     fun createMedia3OkHttpClient(customHeaders: Map<String, String> = emptyMap()): OkHttpClient {
         return OkHttpClient.Builder()
+            .connectionPool(mediaConnectionPool)
+            .protocols(listOf(okhttp3.Protocol.HTTP_2, okhttp3.Protocol.HTTP_1_1))
             .addInterceptor { chain ->
                 val builder = chain.request().newBuilder()
                     .header("User-Agent", "Mozilla/5.0 (Linux; Android TV 14; Large Screen) AppleWebKit/537.36")
                     .header("Referer", "https://zokoanime.video/")
+                    .header("Accept", "*/*")
+                    .header("Connection", "keep-alive")
 
                 customHeaders.forEach { (key, value) ->
                     builder.header(key, value)
@@ -68,8 +74,8 @@ object NetworkClient {
 
                 chain.proceed(builder.build())
             }
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
             .build()
     }
 

@@ -1,6 +1,7 @@
 package com.animex.tv.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,15 +23,13 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.animex.tv.R
 import com.animex.tv.theme.*
-import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 enum class TVDestination(val title: String, val icon: ImageVector) {
     HOME("HOME", Icons.Default.Home),
@@ -46,20 +45,10 @@ fun TVTopNav(
     onSelectDestination: (TVDestination) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var currentTime by remember { mutableStateOf("") }
-
-    LaunchedEffect(Unit) {
-        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-        while (true) {
-            currentTime = sdf.format(Date())
-            delay(10000)
-        }
-    }
-
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(68.dp)
+            .height(72.dp)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
@@ -73,86 +62,82 @@ fun TVTopNav(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // Left: Logo & TV Badge
+        // Left group: Brand Logo + Nav items grouped naturally side-by-side
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(CyberCyan, CyberMagenta))),
-                contentAlignment = Alignment.Center
+            // Brand Logo & TV Badge
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                Image(
+                    painter = painterResource(id = R.drawable.app_logo),
+                    contentDescription = "AnimeX Logo",
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+
                 Text(
-                    text = "X",
-                    color = Color.White,
+                    text = "ANIMEX",
+                    color = CyberTextPrimary,
                     fontWeight = FontWeight.Black,
-                    fontSize = 20.sp,
-                    fontFamily = FontFamily.Monospace
+                    fontSize = 22.sp,
+                    letterSpacing = 2.sp
                 )
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(CyberMagenta)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "TV",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 1.sp
+                    )
+                }
             }
 
-            Text(
-                text = "ANIMEX",
-                color = CyberTextPrimary,
-                fontWeight = FontWeight.Black,
-                fontSize = 22.sp,
-                letterSpacing = 2.sp
-            )
-
+            // Divider line
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(CyberMagenta)
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "TV",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    letterSpacing = 1.sp
-                )
-            }
-        }
-
-        // Center: D-pad focusable navigation tabs
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TVDestination.entries.forEach { dest ->
-                TVNavTabItem(
-                    destination = dest,
-                    isSelected = dest == currentDestination,
-                    onSelect = { onSelectDestination(dest) }
-                )
-            }
-        }
-
-        // Right: Clock & Operational Status
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Live Time HUD
-            Text(
-                text = currentTime,
-                color = CyberCyan,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                fontFamily = FontFamily.Monospace
+                    .width(1.dp)
+                    .height(24.dp)
+                    .background(CyberBorderSubtle)
             )
 
-            // Status Indicator
+            // D-pad focusable navigation tabs (HOME is immediately accessible with no gap)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TVDestination.entries.forEach { dest ->
+                    TVNavTabItem(
+                        destination = dest,
+                        isSelected = dest == currentDestination,
+                        onSelect = { onSelectDestination(dest) }
+                    )
+                }
+            }
+        }
+
+        // Right group: Status Indicator (clock removed)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .background(CyberSurfaceDark)
+                    .background(CyberSurfaceDark.copy(alpha = 0.85f))
                     .border(1.dp, CyberBorderSubtle, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Row(
@@ -167,10 +152,11 @@ fun TVTopNav(
                     )
                     Text(
                         text = "ONLINE",
-                        color = CyberTextSecondary,
+                        color = CyberNeonGreen,
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = FontFamily.Monospace
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp
                     )
                 }
             }
@@ -189,7 +175,7 @@ private fun TVNavTabItem(
 
     val bgColor by animateColorAsState(
         targetValue = when {
-            isFocused -> CyberCyan.copy(alpha = 0.22f)
+            isFocused -> CyberCyan.copy(alpha = 0.25f)
             isSelected -> CyberCardBg
             else -> Color.Transparent
         },

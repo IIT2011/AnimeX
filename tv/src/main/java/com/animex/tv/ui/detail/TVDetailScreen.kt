@@ -215,7 +215,6 @@ fun TVDetailScreen(
                                 DetailBadge(text = "★ ${String.format("%.1f", score)}", color = CyberGold)
                             }
                         }
-                        DetailBadge(text = "4K ULTRA HD", color = CyberCyan)
                         currentAnime.type?.let { DetailBadge(text = it.uppercase(), color = CyberTextPrimary) }
                         currentAnime.status?.let { DetailBadge(text = it.uppercase(), color = CyberNeonGreen) }
                     }

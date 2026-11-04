@@ -156,13 +156,6 @@ fun TVHeroBillboard(
                         )
                     }
 
-                    // 4K Ultra HD Badge
-                    BadgePill(
-                        text = "4K ULTRA HD",
-                        contentColor = CyberCyan,
-                        borderColor = CyberCyan.copy(alpha = 0.5f)
-                    )
-
                     // Episode Count
                     val eps = anime.eps ?: anime.sub ?: 0
                     if (eps > 0) {

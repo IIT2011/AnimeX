@@ -32,6 +32,7 @@ import com.animex.tv.ui.watchlist.TVWatchlistScreen
 import kotlinx.coroutines.launch
 
 data class TVPlayerParams(
+    val animeId: Long? = null,
     val episodeId: Long,
     val episodeNumber: Int,
     val animeTitle: String
@@ -102,6 +103,7 @@ fun TVMainRoot() {
             activePlayerParams != null -> {
                 val params = activePlayerParams!!
                 TVPlayerScreen(
+                    animeId = params.animeId,
                     episodeId = params.episodeId,
                     episodeNumber = params.episodeNumber,
                     animeTitle = params.animeTitle,
@@ -116,6 +118,7 @@ fun TVMainRoot() {
                     onBack = { activeDetailAnimeId = null },
                     onPlayEpisode = { epId, epNum, title ->
                         activePlayerParams = TVPlayerParams(
+                            animeId = activeDetailAnimeId,
                             episodeId = epId,
                             episodeNumber = epNum,
                             animeTitle = title
@@ -145,6 +148,7 @@ fun TVMainRoot() {
                                         onPlayAnimeDirectly = { animeId, episodeId, title ->
                                             if (episodeId != null) {
                                                 activePlayerParams = TVPlayerParams(
+                                                    animeId = animeId,
                                                     episodeId = episodeId,
                                                     episodeNumber = 1,
                                                     animeTitle = title
@@ -157,6 +161,7 @@ fun TVMainRoot() {
                                                         val first = eps.data.firstOrNull()
                                                         if (first != null) {
                                                             activePlayerParams = TVPlayerParams(
+                                                                animeId = animeId,
                                                                 episodeId = first.id,
                                                                 episodeNumber = first.number,
                                                                 animeTitle = title
