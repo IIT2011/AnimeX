@@ -4,11 +4,11 @@ import android.net.Uri
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,10 +19,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,11 +38,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -54,8 +54,6 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
-import androidx.media3.ui.SubtitleView
-import coil.compose.rememberAsyncImagePainter
 import com.animex.tv.core.model.EpisodeItemDto
 import com.animex.tv.core.model.PlayRequest
 import com.animex.tv.core.model.PlayResponseDto
@@ -111,12 +109,11 @@ fun TVPlayerScreen(
     var seekNotice by remember { mutableStateOf<String?>(null) }
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubPositionMs by remember { mutableLongStateOf(0L) }
-    var scrubHoldCount by remember { mutableIntStateOf(0) }
     var scrubDirection by remember { mutableStateOf("FORWARD") }
 
     val playPauseRequester = remember { FocusRequester() }
 
-    // High performance TV LoadControl (lightning fast 1s start, 60s deep buffer ahead)
+    // High performance TV LoadControl (1s instant start, 60s deep buffer)
     val loadControl = remember {
         DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -148,7 +145,7 @@ fun TVPlayerScreen(
 
     // Focus play/pause button when controls open
     LaunchedEffect(showControls) {
-        if (showControls) {
+        if (showControls && !showEpisodeDrawer && !showQualityMenu && !showAudioMenu && !showSubtitleMenu) {
             delay(100)
             try {
                 playPauseRequester.requestFocus()
@@ -193,7 +190,7 @@ fun TVPlayerScreen(
                     val okHttpClient = NetworkClient.createMedia3OkHttpClient(src.mediaHeaders)
                     val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
 
-                    // Attach companion subtitles to MediaItem so ExoPlayer renders them properly
+                    // Attach companion subtitles to MediaItem
                     val subConfigs = src.subtitles.map { sub ->
                         val mime = if (sub.url.endsWith(".srt", ignoreCase = true)) {
                             MimeTypes.APPLICATION_SUBRIP
@@ -208,7 +205,6 @@ fun TVPlayerScreen(
                             .build()
                     }
 
-                    // Set default subtitle
                     if (selectedSubtitle == null) {
                         selectedSubtitle = src.subtitles.firstOrNull { it.default } ?: src.subtitles.firstOrNull()
                     }
@@ -328,7 +324,7 @@ fun TVPlayerScreen(
                     return@onKeyEvent true
                 }
 
-                // If any popup menu is open, let user press BACK or navigate within it
+                // If popup menu is open, let menu handle D-pad; Back closes menu
                 if (showQualityMenu || showAudioMenu || showSubtitleMenu || showEpisodeDrawer) {
                     if (isDown && native.keyCode == KeyEvent.KEYCODE_BACK) {
                         showQualityMenu = false
@@ -356,42 +352,39 @@ fun TVPlayerScreen(
                             }
                             KeyEvent.KEYCODE_DPAD_LEFT -> {
                                 if (repeat > 0) {
-                                    // Holding Left: Start Crunchyroll-style Frame/Time Scrubbing Mode
+                                    // Holding Left: Smooth, controlled scrub step (3-5s per repeat event)
                                     isScrubbing = true
-                                    scrubHoldCount = repeat
                                     scrubDirection = "REWIND"
-                                    val step = if (repeat < 5) 5000L else if (repeat < 15) 15000L else 30000L
-                                    scrubPositionMs = (currentPosition - (step * repeat)).coerceAtLeast(0L)
+                                    val step = if (repeat < 20) 4000L else 8000L
+                                    scrubPositionMs = (scrubPositionMs - step).coerceAtLeast(0L)
                                     true
                                 } else {
-                                    // Single click Left: Seek -10s
-                                    val target = (exoPlayer.currentPosition - 10000).coerceAtLeast(0L)
-                                    exoPlayer.seekTo(target)
-                                    currentPosition = target
+                                    // Initial press: setup scrub start and seek -10s
+                                    scrubPositionMs = (exoPlayer.currentPosition - 10000L).coerceAtLeast(0L)
+                                    exoPlayer.seekTo(scrubPositionMs)
+                                    currentPosition = scrubPositionMs
                                     seekNotice = "-10s"
                                     true
                                 }
                             }
                             KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                 if (repeat > 0) {
-                                    // Holding Right: Start Crunchyroll-style Frame/Time Scrubbing Mode
+                                    // Holding Right: Smooth, controlled scrub step (3-5s per repeat event)
                                     isScrubbing = true
-                                    scrubHoldCount = repeat
                                     scrubDirection = "FORWARD"
-                                    val step = if (repeat < 5) 5000L else if (repeat < 15) 15000L else 30000L
-                                    scrubPositionMs = (currentPosition + (step * repeat)).coerceAtMost(duration)
+                                    val step = if (repeat < 20) 4000L else 8000L
+                                    scrubPositionMs = (scrubPositionMs + step).coerceAtMost(duration)
                                     true
                                 } else {
-                                    // Single click Right: Seek +10s
-                                    val target = (exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration)
-                                    exoPlayer.seekTo(target)
-                                    currentPosition = target
+                                    // Initial press: setup scrub start and seek +10s
+                                    scrubPositionMs = (exoPlayer.currentPosition + 10000L).coerceAtMost(exoPlayer.duration)
+                                    exoPlayer.seekTo(scrubPositionMs)
+                                    currentPosition = scrubPositionMs
                                     seekNotice = "+10s"
                                     true
                                 }
                             }
                             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
-                                // Show controls HUD and focus play/pause button
                                 showControls = true
                                 true
                             }
@@ -399,20 +392,18 @@ fun TVPlayerScreen(
                         }
                     } else false
                 } else if (isScrubbing) {
-                    // In Crunchyroll scrubbing mode:
+                    // Holding Left/Right scrubbing mode:
                     if (isDown) {
                         when (native.keyCode) {
                             KeyEvent.KEYCODE_DPAD_LEFT -> {
                                 scrubDirection = "REWIND"
-                                scrubHoldCount++
-                                val step = if (scrubHoldCount < 5) 5000L else if (scrubHoldCount < 15) 15000L else 30000L
+                                val step = if (repeat < 20) 4000L else 8000L
                                 scrubPositionMs = (scrubPositionMs - step).coerceAtLeast(0L)
                                 true
                             }
                             KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                 scrubDirection = "FORWARD"
-                                scrubHoldCount++
-                                val step = if (scrubHoldCount < 5) 5000L else if (scrubHoldCount < 15) 15000L else 30000L
+                                val step = if (repeat < 20) 4000L else 8000L
                                 scrubPositionMs = (scrubPositionMs + step).coerceAtMost(duration)
                                 true
                             }
@@ -426,7 +417,7 @@ fun TVPlayerScreen(
                             else -> false
                         }
                     } else if (isUp && (native.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || native.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)) {
-                        // Key released: Commit seek and continue playback
+                        // Key released: smoothly commit seek
                         exoPlayer.seekTo(scrubPositionMs)
                         currentPosition = scrubPositionMs
                         isScrubbing = false
@@ -434,7 +425,7 @@ fun TVPlayerScreen(
                         true
                     } else false
                 } else {
-                    // Controls are showing: let child buttons receive focus and handle DPAD_LEFT/RIGHT
+                    // Controls HUD is showing: allow horizontal D-pad navigation between buttons
                     false
                 }
             }
@@ -514,7 +505,7 @@ fun TVPlayerScreen(
             }
         }
 
-        // Crunchyroll-style Frame & Time Scrubbing Interface
+        // Crunchyroll-style Frame & Time Scrubbing Interface (Controlled & Readable)
         AnimatedVisibility(
             visible = isScrubbing,
             enter = fadeIn() + slideInVertically { it / 2 },
@@ -536,10 +527,10 @@ fun TVPlayerScreen(
                 Box(
                     modifier = Modifier
                         .width(260.dp)
-                        .height(146.dp)
+                        .height(140.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(CyberSurfaceDark)
-                        .border(1.5.dp, CyberCyan.copy(alpha = 0.8f), RoundedCornerShape(12.dp)),
+                        .border(1.5.dp, CyberCyan, RoundedCornerShape(12.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
@@ -556,9 +547,17 @@ fun TVPlayerScreen(
                         Text(
                             text = formatTime(scrubPositionMs),
                             color = Color.White,
-                            fontSize = 20.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.Black,
                             fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = if (scrubDirection == "FORWARD") ">> SEEKING FORWARD" else "<< SEEKING BACKWARD",
+                            color = CyberMagenta,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 1.sp
                         )
                     }
                 }
@@ -580,10 +579,10 @@ fun TVPlayerScreen(
                     )
 
                     Text(
-                        text = if (scrubDirection == "FORWARD") "FAST FORWARD >>" else "<< REWIND",
-                        color = CyberMagenta,
+                        text = "RELEASE TO PLAY",
+                        color = CyberTextSecondary,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
                         letterSpacing = 2.sp
                     )
@@ -615,14 +614,6 @@ fun TVPlayerScreen(
                             .background(Brush.horizontalGradient(listOf(CyberCyan, CyberMagenta)))
                     )
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Release remote arrow or press OK to resume playback",
-                    color = CyberTextSecondary,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
-                )
             }
         }
 
@@ -837,7 +828,7 @@ fun TVPlayerScreen(
 
                         // True Working Audio Track Switcher (SUB / DUB)
                         TVRemoteButton(
-                            icon = Icons.Default.VolumeUp,
+                            icon = Icons.AutoMirrored.Filled.VolumeUp,
                             label = currentAudioTrack.uppercase(),
                             onClick = {
                                 showAudioMenu = true
@@ -879,7 +870,7 @@ fun TVPlayerScreen(
             }
         }
 
-        // Quality Selection Dialog
+        // Quality Selection Dialog with Full D-pad Focus
         if (showQualityMenu) {
             TVOptionPickerDialog(
                 title = "SELECT VIDEO QUALITY",
@@ -907,7 +898,7 @@ fun TVPlayerScreen(
             )
         }
 
-        // Audio Track Selection Dialog (SUB vs DUB)
+        // Audio Track Selection Dialog (SUB vs DUB) with Full D-pad Focus
         if (showAudioMenu) {
             val availableAudio = playResponse?.tracks?.ifEmpty { listOf("sub", "dub") } ?: listOf("sub", "dub")
             TVOptionPickerDialog(
@@ -925,7 +916,7 @@ fun TVPlayerScreen(
             )
         }
 
-        // Subtitles Selection Dialog
+        // Subtitles Selection Dialog with Full D-pad Focus
         if (showSubtitleMenu) {
             val subs = selectedSource?.subtitles ?: emptyList()
             val subOptions = mutableListOf("Off")
@@ -959,8 +950,16 @@ fun TVPlayerScreen(
             )
         }
 
-        // Episodes Drawer Overlay
+        // Episodes Drawer Overlay with Full D-pad Focus
         if (showEpisodeDrawer) {
+            val drawerFirstFocus = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                delay(120)
+                try {
+                    drawerFirstFocus.requestFocus()
+                } catch (_: Exception) {}
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1008,11 +1007,14 @@ fun TVPlayerScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(epsToDisplay) { ep ->
+                        itemsIndexed(epsToDisplay) { idx, ep ->
                             val isCurrent = ep.number == currentEpNum
+                            val itemRequester = if (isCurrent || (idx == 0 && epsToDisplay.none { it.number == currentEpNum })) drawerFirstFocus else null
+
                             TVEpisodePickerCard(
                                 episode = ep,
                                 isCurrent = isCurrent,
+                                focusRequester = itemRequester,
                                 onClick = {
                                     if (ep.number != currentEpNum) {
                                         currentEpNum = ep.number
@@ -1038,6 +1040,15 @@ private fun TVOptionPickerDialog(
     onDismiss: () -> Unit,
     onSelectOption: (String) -> Unit
 ) {
+    val initialFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(120)
+        try {
+            initialFocusRequester.requestFocus()
+        } catch (_: Exception) {}
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1046,7 +1057,7 @@ private fun TVOptionPickerDialog(
     ) {
         Column(
             modifier = Modifier
-                .width(420.dp)
+                .width(440.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(CyberVoid)
                 .border(2.dp, CyberCyan, RoundedCornerShape(16.dp))
@@ -1081,14 +1092,17 @@ private fun TVOptionPickerDialog(
                     .heightIn(max = 280.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(options) { opt ->
+                itemsIndexed(options) { idx, opt ->
                     val isSelected = opt == selectedOption
+                    val isFirstOrSelected = isSelected || (idx == 0 && options.none { it == selectedOption })
                     val interactionSource = remember { MutableInteractionSource() }
                     val isFocused by interactionSource.collectIsFocusedAsState()
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .then(if (isFirstOrSelected) Modifier.focusRequester(initialFocusRequester) else Modifier)
+                            .scale(if (isFocused) 1.05f else 1.0f)
                             .clip(RoundedCornerShape(8.dp))
                             .background(
                                 when {
@@ -1098,11 +1112,20 @@ private fun TVOptionPickerDialog(
                                 }
                             )
                             .border(
-                                width = if (isFocused) 2.dp else 1.dp,
+                                width = if (isFocused) 2.5.dp else 1.dp,
                                 color = if (isFocused) CyberCyan else if (isSelected) CyberCyan.copy(alpha = 0.6f) else CyberBorderSubtle,
                                 shape = RoundedCornerShape(8.dp)
                             )
                             .focusable(interactionSource = interactionSource)
+                            .onKeyEvent {
+                                if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                                    (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                                     it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER ||
+                                     it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                                    onSelectOption(opt)
+                                    true
+                                } else false
+                            }
                             .clickable(interactionSource = interactionSource, indication = null) {
                                 onSelectOption(opt)
                             }
@@ -1141,6 +1164,7 @@ private fun TVOptionPickerDialog(
 private fun TVEpisodePickerCard(
     episode: EpisodeItemDto,
     isCurrent: Boolean,
+    focusRequester: FocusRequester? = null,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -1150,21 +1174,31 @@ private fun TVEpisodePickerCard(
         modifier = Modifier
             .width(160.dp)
             .height(110.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .scale(if (isFocused) 1.08f else 1.0f)
             .clip(RoundedCornerShape(10.dp))
             .background(
                 when {
-                    isFocused -> CyberCyan.copy(alpha = 0.3f)
+                    isFocused -> CyberCyan.copy(alpha = 0.35f)
                     isCurrent -> CyberMagenta.copy(alpha = 0.25f)
                     else -> CyberCardBg
                 }
             )
             .border(
-                width = if (isFocused) 2.dp else 1.dp,
+                width = if (isFocused) 2.5.dp else 1.dp,
                 color = if (isFocused) CyberCyan else if (isCurrent) CyberMagenta else CyberBorderSubtle,
                 shape = RoundedCornerShape(10.dp)
             )
             .focusable(interactionSource = interactionSource)
+            .onKeyEvent {
+                if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                    (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                     it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER ||
+                     it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                    onClick()
+                    true
+                } else false
+            }
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(12.dp)
     ) {
@@ -1244,12 +1278,21 @@ private fun TVPlayPauseButton(
                 if (isFocused) CyberCyan else CyberCyan.copy(alpha = 0.85f)
             )
             .border(
-                width = if (isFocused) 3.dp else 1.dp,
+                width = if (isFocused) 3.5.dp else 1.dp,
                 color = if (isFocused) Color.White else Color.Transparent,
                 shape = CircleShape
             )
             .focusRequester(focusRequester)
             .focusable(interactionSource = interactionSource)
+            .onKeyEvent {
+                if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                    (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                     it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER ||
+                     it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                    onClick()
+                    true
+                } else false
+            }
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -1277,11 +1320,20 @@ private fun TVRemoteButton(
             .clip(RoundedCornerShape(8.dp))
             .background(if (isFocused) CyberCyan.copy(alpha = 0.35f) else CyberCardBg)
             .border(
-                width = if (isFocused) 2.dp else 1.dp,
+                width = if (isFocused) 2.5.dp else 1.dp,
                 color = if (isFocused) CyberCyan else CyberBorderSubtle,
                 shape = RoundedCornerShape(8.dp)
             )
             .focusable(interactionSource = interactionSource)
+            .onKeyEvent {
+                if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                    (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                     it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER ||
+                     it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                    onClick()
+                    true
+                } else false
+            }
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center

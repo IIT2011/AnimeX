@@ -9,11 +9,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,6 +30,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.animex.tv.core.updater.TVAppUpdateManager
 import com.animex.tv.core.updater.TVUpdateCheckResult
 import com.animex.tv.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun TVUpdateDialog(
@@ -37,7 +38,12 @@ fun TVUpdateDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val updateButtonFocus = remember { FocusRequester() }
+
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableFloatStateOf(0f) }
+    var downloadError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         try {
@@ -128,41 +134,83 @@ fun TVUpdateDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    CyberTVButton(
-                        text = "UPDATE NOW",
-                        modifier = Modifier
-                            .weight(1f)
-                            .focusRequester(updateButtonFocus),
-                        accentColor = CyberCyan,
-                        onClick = {
-                            if (!updateInfo.downloadUrl.isNullOrBlank()) {
-                                TVAppUpdateManager.startDownload(
-                                    context = context,
-                                    downloadUrl = updateInfo.downloadUrl,
-                                    fileName = updateInfo.fileName ?: "AnimeX-tv-v${updateInfo.latestVersion}.apk"
-                                )
-                                Toast.makeText(
-                                    context,
-                                    "Starting download for ${updateInfo.fileName ?: "AnimeX TV APK"}...",
-                                    Toast.LENGTH_LONG
-                                ).show()
+                if (isDownloading) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        LinearProgressIndicator(
+                            progress = { downloadProgress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                            color = CyberCyan,
+                            trackColor = CyberCardBg
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "DOWNLOADING UPDATE: ${(downloadProgress * 100).toInt()}%...",
+                            color = CyberCyan,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                } else if (downloadError != null) {
+                    Text(
+                        text = downloadError!!,
+                        color = CyberMagenta,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (!isDownloading) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        CyberTVButton(
+                            text = "UPDATE NOW",
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(updateButtonFocus),
+                            accentColor = CyberCyan,
+                            onClick = {
+                                if (!updateInfo.downloadUrl.isNullOrBlank()) {
+                                    isDownloading = true
+                                    downloadError = null
+                                    coroutineScope.launch {
+                                        val ok = TVAppUpdateManager.downloadAndInstallApk(
+                                            context = context,
+                                            downloadUrl = updateInfo.downloadUrl,
+                                            fileName = updateInfo.fileName ?: "AnimeX-tv-v${updateInfo.latestVersion}.apk",
+                                            onProgress = { p -> downloadProgress = p }
+                                        )
+                                        isDownloading = false
+                                        if (ok) {
+                                            onDismiss()
+                                        } else {
+                                            downloadError = "Download failed. Please check network."
+                                        }
+                                    }
+                                }
                             }
-                            onDismiss()
-                        }
-                    )
+                        )
 
-                    CyberTVButton(
-                        text = "LATER",
-                        modifier = Modifier.weight(1f),
-                        accentColor = CyberBorderSubtle,
-                        onClick = onDismiss
-                    )
+                        CyberTVButton(
+                            text = "LATER",
+                            modifier = Modifier.weight(1f),
+                            accentColor = CyberBorderSubtle,
+                            onClick = onDismiss
+                        )
+                    }
                 }
             }
         }
