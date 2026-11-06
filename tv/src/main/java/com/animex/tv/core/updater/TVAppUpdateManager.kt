@@ -164,6 +164,21 @@ object TVAppUpdateManager {
 
     fun installApk(context: Context, apkFile: File) {
         try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    val settingsIntent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(settingsIntent)
+                    android.widget.Toast.makeText(
+                        context,
+                        "Please allow 'Install unknown apps' for AnimeX TV to complete the update.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                    return
+                }
+            }
             val uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",

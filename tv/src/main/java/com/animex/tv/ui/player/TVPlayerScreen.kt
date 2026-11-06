@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
@@ -74,6 +76,7 @@ fun TVPlayerScreen(
     episodeId: Long,
     episodeNumber: Int,
     animeTitle: String,
+    poster: String? = null,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -174,7 +177,49 @@ fun TVPlayerScreen(
         }
     }
 
-    // Stream loader function
+    // Stream loader function with graceful Dub->Sub fallback
+    fun playSource(src: PlaybackSourceDto, res: PlayResponseDto, seekToMs: Long) {
+        selectedSource = src
+        val okHttpClient = NetworkClient.createMedia3OkHttpClient(src.mediaHeaders)
+        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+
+        // Attach companion subtitles to MediaItem
+        val subConfigs = src.subtitles.map { sub ->
+            val mime = if (sub.url.endsWith(".srt", ignoreCase = true)) {
+                MimeTypes.APPLICATION_SUBRIP
+            } else {
+                MimeTypes.TEXT_VTT
+            }
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
+                .setMimeType(mime)
+                .setLanguage(sub.lang)
+                .setLabel(sub.label)
+                .setSelectionFlags(if (sub.default) C.SELECTION_FLAG_DEFAULT else 0)
+                .build()
+        }
+
+        if (selectedSubtitle == null) {
+            selectedSubtitle = src.subtitles.firstOrNull { it.default } ?: src.subtitles.firstOrNull()
+        }
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(src.url)
+            .setMimeType(MimeTypes.APPLICATION_M3U8)
+            .setSubtitleConfigurations(subConfigs)
+            .build()
+
+        val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
+            .createMediaSource(mediaItem)
+
+        exoPlayer.setMediaSource(mediaSource)
+        exoPlayer.prepare()
+        if (seekToMs > 0L) {
+            exoPlayer.seekTo(seekToMs)
+        }
+        exoPlayer.play()
+        isLoading = false
+    }
+
     fun loadStream(epId: Long, track: String, seekToMs: Long = 0L) {
         coroutineScope.launch {
             isLoading = true
@@ -184,52 +229,39 @@ fun TVPlayerScreen(
                 playResponse = res
                 val src = res.sources.firstOrNull { it.url != null }
                 if (src != null) {
-                    selectedSource = src
                     currentAudioTrack = track
-
-                    val okHttpClient = NetworkClient.createMedia3OkHttpClient(src.mediaHeaders)
-                    val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
-
-                    // Attach companion subtitles to MediaItem
-                    val subConfigs = src.subtitles.map { sub ->
-                        val mime = if (sub.url.endsWith(".srt", ignoreCase = true)) {
-                            MimeTypes.APPLICATION_SUBRIP
-                        } else {
-                            MimeTypes.TEXT_VTT
-                        }
-                        MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
-                            .setMimeType(mime)
-                            .setLanguage(sub.lang)
-                            .setLabel(sub.label)
-                            .setSelectionFlags(if (sub.default) C.SELECTION_FLAG_DEFAULT else 0)
-                            .build()
+                    playSource(src, res, seekToMs)
+                } else if (track.equals("dub", ignoreCase = true)) {
+                    // Graceful fallback to SUB
+                    currentAudioTrack = "sub"
+                    android.widget.Toast.makeText(context, "English Dub not available. Playing Sub version.", android.widget.Toast.LENGTH_LONG).show()
+                    val subRes = NetworkClient.api.playEpisode(epId, PlayRequest(track = "sub"))
+                    playResponse = subRes
+                    val subSrc = subRes.sources.firstOrNull { it.url != null }
+                    if (subSrc != null) {
+                        playSource(subSrc, subRes, seekToMs)
+                    } else {
+                        errorMessage = "No valid streaming server found for this episode."
+                        isLoading = false
                     }
-
-                    if (selectedSubtitle == null) {
-                        selectedSubtitle = src.subtitles.firstOrNull { it.default } ?: src.subtitles.firstOrNull()
-                    }
-
-                    val mediaItem = MediaItem.Builder()
-                        .setUri(src.url)
-                        .setMimeType(MimeTypes.APPLICATION_M3U8)
-                        .setSubtitleConfigurations(subConfigs)
-                        .build()
-
-                    val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(mediaItem)
-
-                    exoPlayer.setMediaSource(mediaSource)
-                    exoPlayer.prepare()
-                    if (seekToMs > 0L) {
-                        exoPlayer.seekTo(seekToMs)
-                    }
-                    exoPlayer.play()
-                    isLoading = false
                 } else {
                     errorMessage = "No valid streaming server found for this episode."
                     isLoading = false
                 }
             } catch (e: Exception) {
+                if (track.equals("dub", ignoreCase = true)) {
+                    try {
+                        currentAudioTrack = "sub"
+                        android.widget.Toast.makeText(context, "Dub stream unavailable. Loading Sub...", android.widget.Toast.LENGTH_SHORT).show()
+                        val subRes = NetworkClient.api.playEpisode(epId, PlayRequest(track = "sub"))
+                        playResponse = subRes
+                        val subSrc = subRes.sources.firstOrNull { it.url != null }
+                        if (subSrc != null) {
+                            playSource(subSrc, subRes, seekToMs)
+                            return@launch
+                        }
+                    } catch (_: Exception) {}
+                }
                 errorMessage = e.localizedMessage ?: "Failed to initialize video stream."
                 isLoading = false
             }
@@ -282,7 +314,7 @@ fun TVPlayerScreen(
                     WatchHistoryEntry(
                         animeId = animeId ?: 0L,
                         title = animeTitle,
-                        poster = null,
+                        poster = poster,
                         episodeId = currentEpId,
                         episodeNumber = currentEpNum,
                         progressPercent = progress
@@ -352,10 +384,10 @@ fun TVPlayerScreen(
                             }
                             KeyEvent.KEYCODE_DPAD_LEFT -> {
                                 if (repeat > 0) {
-                                    // Holding Left: Smooth, controlled scrub step (3-5s per repeat event)
+                                    // Holding Left: Smooth, controlled scrub step
                                     isScrubbing = true
                                     scrubDirection = "REWIND"
-                                    val step = if (repeat < 20) 4000L else 8000L
+                                    val step = if (repeat < 15) 1000L else if (repeat < 35) 2000L else 3500L
                                     scrubPositionMs = (scrubPositionMs - step).coerceAtLeast(0L)
                                     true
                                 } else {
@@ -369,10 +401,10 @@ fun TVPlayerScreen(
                             }
                             KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                 if (repeat > 0) {
-                                    // Holding Right: Smooth, controlled scrub step (3-5s per repeat event)
+                                    // Holding Right: Smooth, controlled scrub step
                                     isScrubbing = true
                                     scrubDirection = "FORWARD"
-                                    val step = if (repeat < 20) 4000L else 8000L
+                                    val step = if (repeat < 15) 1000L else if (repeat < 35) 2000L else 3500L
                                     scrubPositionMs = (scrubPositionMs + step).coerceAtMost(duration)
                                     true
                                 } else {
@@ -397,13 +429,13 @@ fun TVPlayerScreen(
                         when (native.keyCode) {
                             KeyEvent.KEYCODE_DPAD_LEFT -> {
                                 scrubDirection = "REWIND"
-                                val step = if (repeat < 20) 4000L else 8000L
+                                val step = if (repeat < 15) 1000L else if (repeat < 35) 2000L else 3500L
                                 scrubPositionMs = (scrubPositionMs - step).coerceAtLeast(0L)
                                 true
                             }
                             KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                 scrubDirection = "FORWARD"
-                                val step = if (repeat < 20) 4000L else 8000L
+                                val step = if (repeat < 15) 1000L else if (repeat < 35) 2000L else 3500L
                                 scrubPositionMs = (scrubPositionMs + step).coerceAtMost(duration)
                                 true
                             }
@@ -886,11 +918,10 @@ fun TVPlayerScreen(
                             .build()
                     } else {
                         val h = q.removeSuffix("p").toIntOrNull() ?: 720
-                        val w = (h * 16) / 9
                         exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                             .buildUpon()
-                            .setMaxVideoSize(w, h)
-                            .setMinVideoSize(w, h)
+                            .clearVideoSizeConstraints()
+                            .setMaxVideoSize(Int.MAX_VALUE, h)
                             .build()
                     }
                     showQualityMenu = false
@@ -997,33 +1028,53 @@ fun TVPlayerScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    val epsToDisplay = if (episodeList.isNotEmpty()) {
-                        episodeList
+                    if (episodeList.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    color = CyberCyan,
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Text(
+                                    text = "LOADING EPISODE LIST...",
+                                    color = CyberTextSecondary,
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
                     } else {
-                        (1..24).map { EpisodeItemDto(id = currentEpId, number = it, title = "Episode $it") }
-                    }
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            itemsIndexed(episodeList) { idx, ep ->
+                                val isCurrent = ep.number == currentEpNum
+                                val itemRequester = if (isCurrent || (idx == 0 && episodeList.none { it.number == currentEpNum })) drawerFirstFocus else null
 
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        itemsIndexed(epsToDisplay) { idx, ep ->
-                            val isCurrent = ep.number == currentEpNum
-                            val itemRequester = if (isCurrent || (idx == 0 && epsToDisplay.none { it.number == currentEpNum })) drawerFirstFocus else null
-
-                            TVEpisodePickerCard(
-                                episode = ep,
-                                isCurrent = isCurrent,
-                                focusRequester = itemRequester,
-                                onClick = {
-                                    if (ep.number != currentEpNum) {
-                                        currentEpNum = ep.number
-                                        currentEpId = ep.id
-                                        loadStream(ep.id, currentAudioTrack)
+                                TVEpisodePickerCard(
+                                    episode = ep,
+                                    isCurrent = isCurrent,
+                                    focusRequester = itemRequester,
+                                    onClick = {
+                                        if (ep.number != currentEpNum) {
+                                            currentEpNum = ep.number
+                                            currentEpId = ep.id
+                                            loadStream(ep.id, currentAudioTrack)
+                                        }
+                                        showEpisodeDrawer = false
                                     }
-                                    showEpisodeDrawer = false
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                 }
@@ -1042,8 +1093,12 @@ private fun TVOptionPickerDialog(
 ) {
     val initialFocusRequester = remember { FocusRequester() }
 
+    BackHandler {
+        onDismiss()
+    }
+
     LaunchedEffect(Unit) {
-        delay(120)
+        delay(60)
         try {
             initialFocusRequester.requestFocus()
         } catch (_: Exception) {}
@@ -1086,13 +1141,13 @@ private fun TVOptionPickerDialog(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            LazyColumn(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 280.dp),
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                itemsIndexed(options) { idx, opt ->
+                options.forEachIndexed { idx, opt ->
                     val isSelected = opt == selectedOption
                     val isFirstOrSelected = isSelected || (idx == 0 && options.none { it == selectedOption })
                     val interactionSource = remember { MutableInteractionSource() }

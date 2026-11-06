@@ -652,6 +652,18 @@ object DownloadRepository {
                 saveSubtitleToMediaStore(context, cleanFolder, "$baseName.vtt", rawVtt, "text/vtt")
             }
 
+            // Trigger MediaScanner for immediate recognition in VLC / file managers
+            try {
+                val scanPaths = mutableListOf<String>()
+                listOf("$baseName.srt", "$baseName.en.srt", "$baseName.English.srt", "$baseName.vtt").forEach { name ->
+                    val f = File(parentDir, name)
+                    if (f.exists()) scanPaths.add(f.absolutePath)
+                }
+                if (scanPaths.isNotEmpty()) {
+                    MediaScannerConnection.scanFile(context, scanPaths.toTypedArray(), null, null)
+                }
+            } catch (_: Exception) {}
+
             Log.i(TAG, "Downloaded and saved companion subtitles for $baseName successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to download subtitles for ${targetVideoFile.name}", e)
@@ -668,15 +680,34 @@ object DownloadRepository {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
         try {
             val resolver = context.contentResolver
+            val relativePath = "Download/AnimeX/$subFolder/"
+
+            // Clean previous collision to prevent "(1)" naming that breaks VLC auto-load
+            try {
+                val uri = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
+                resolver.delete(uri, selection, arrayOf(fileName, relativePath))
+            } catch (_: Exception) {}
+
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/AnimeX/$subFolder/")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
             }
             val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: run {
+                    val fallbackValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                    }
+                    resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, fallbackValues)
+                }
+
             if (uri != null) {
-                resolver.openOutputStream(uri)?.use { out ->
+                resolver.openOutputStream(uri, "rwt")?.use { out ->
                     out.write(content.toByteArray(Charsets.UTF_8))
+                    out.flush()
                 }
             }
         } catch (e: Exception) {
@@ -690,7 +721,7 @@ object DownloadRepository {
         var cueIndex = 1
         var i = 0
 
-        val timeRegex = Regex("""(?:(\d{1,2}):)?(\d{2}):(\d{2})[.,](\d{1,4})\s*-->\s*(?:(\d{1,2}):)?(\d{2}):(\d{2})[.,](\d{1,4})""")
+        val timeRegex = Regex("""(?:(\d{1,4}):)?(\d{2}):(\d{2})[.,](\d{1,4})\s*-->\s*(?:(\d{1,4}):)?(\d{2}):(\d{2})[.,](\d{1,4})""")
 
         while (i < lines.size) {
             val line = lines[i].trim()

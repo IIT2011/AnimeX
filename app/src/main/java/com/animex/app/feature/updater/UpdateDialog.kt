@@ -1,6 +1,5 @@
 package com.animex.app.feature.updater
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -10,8 +9,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,6 +25,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.animex.app.core.designsystem.*
 import com.animex.app.core.updater.AppUpdateManager
 import com.animex.app.core.updater.UpdateCheckResult
+import kotlinx.coroutines.launch
 
 @Composable
 fun UpdateDialog(
@@ -32,9 +33,16 @@ fun UpdateDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableFloatStateOf(0f) }
+    var downloadError by remember { mutableStateOf<String?>(null) }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (!isDownloading) onDismiss()
+        },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
@@ -119,38 +127,80 @@ fun UpdateDialog(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        CyberButton(
-                            text = "LATER",
-                            modifier = Modifier.weight(1f),
-                            isPrimary = false,
-                            onClick = onDismiss
+                    if (isDownloading) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            LinearProgressIndicator(
+                                progress = { downloadProgress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = NeonCyan,
+                                trackColor = ObsidianCard
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "DOWNLOADING UPDATE: ${(downloadProgress * 100).toInt()}%...",
+                                color = NeonCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    } else if (downloadError != null) {
+                        Text(
+                            text = downloadError!!,
+                            color = NeonMagenta,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace
                         )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
 
-                        CyberButton(
-                            text = "UPDATE NOW",
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                if (!updateInfo.downloadUrl.isNullOrBlank()) {
-                                    AppUpdateManager.startDownload(
-                                        context = context,
-                                        downloadUrl = updateInfo.downloadUrl,
-                                        fileName = updateInfo.fileName ?: "AnimeX-v${updateInfo.latestVersion}.apk"
-                                    )
-                                    Toast.makeText(
-                                        context,
-                                        "Starting download for ${updateInfo.fileName ?: "AnimeX APK"}...",
-                                        Toast.LENGTH_LONG
-                                    ).show()
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (!isDownloading) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            CyberButton(
+                                text = "LATER",
+                                modifier = Modifier.weight(1f),
+                                isPrimary = false,
+                                onClick = onDismiss
+                            )
+
+                            CyberButton(
+                                text = "UPDATE NOW",
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    if (!updateInfo.downloadUrl.isNullOrBlank()) {
+                                        isDownloading = true
+                                        downloadError = null
+                                        coroutineScope.launch {
+                                            val ok = AppUpdateManager.downloadAndInstallApk(
+                                                context = context,
+                                                downloadUrl = updateInfo.downloadUrl,
+                                                fileName = updateInfo.fileName ?: "AnimeX-v${updateInfo.latestVersion}.apk",
+                                                onProgress = { p -> downloadProgress = p }
+                                            )
+                                            isDownloading = false
+                                            if (ok) {
+                                                onDismiss()
+                                            } else {
+                                                downloadError = "Download failed. Please check network."
+                                            }
+                                        }
+                                    }
                                 }
-                                onDismiss()
-                            }
-                        )
+                            )
+                        }
                     }
                 } else {
                     Text(

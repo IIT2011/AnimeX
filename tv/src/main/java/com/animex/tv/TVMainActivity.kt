@@ -35,7 +35,8 @@ data class TVPlayerParams(
     val animeId: Long? = null,
     val episodeId: Long,
     val episodeNumber: Int,
-    val animeTitle: String
+    val animeTitle: String,
+    val poster: String? = null
 )
 
 class TVMainActivity : ComponentActivity() {
@@ -107,6 +108,7 @@ fun TVMainRoot() {
                     episodeId = params.episodeId,
                     episodeNumber = params.episodeNumber,
                     animeTitle = params.animeTitle,
+                    poster = params.poster,
                     onBack = { activePlayerParams = null }
                 )
             }
@@ -116,12 +118,13 @@ fun TVMainRoot() {
                 TVDetailScreen(
                     animeId = activeDetailAnimeId!!,
                     onBack = { activeDetailAnimeId = null },
-                    onPlayEpisode = { epId, epNum, title ->
+                    onPlayEpisode = { epId, epNum, title, poster ->
                         activePlayerParams = TVPlayerParams(
                             animeId = activeDetailAnimeId,
                             episodeId = epId,
                             episodeNumber = epNum,
-                            animeTitle = title
+                            animeTitle = title,
+                            poster = poster
                         )
                     }
                 )
@@ -145,13 +148,14 @@ fun TVMainRoot() {
                                         onOpenAnimeDetail = { id ->
                                             activeDetailAnimeId = id
                                         },
-                                        onPlayAnimeDirectly = { animeId, episodeId, title ->
+                                        onPlayAnimeDirectly = { animeId, episodeId, title, poster ->
                                             if (episodeId != null) {
                                                 activePlayerParams = TVPlayerParams(
                                                     animeId = animeId,
                                                     episodeId = episodeId,
                                                     episodeNumber = 1,
-                                                    animeTitle = title
+                                                    animeTitle = title,
+                                                    poster = poster
                                                 )
                                             } else {
                                                 // Fetch first episode asynchronously
@@ -164,7 +168,8 @@ fun TVMainRoot() {
                                                                 animeId = animeId,
                                                                 episodeId = first.id,
                                                                 episodeNumber = first.number,
-                                                                animeTitle = title
+                                                                animeTitle = title,
+                                                                poster = poster
                                                             )
                                                         } else {
                                                             activeDetailAnimeId = animeId

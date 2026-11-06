@@ -487,7 +487,7 @@ fun AccountScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Installed: v${AppUpdateManager.CURRENT_VERSION}",
+                                    text = "Installed: v${AppUpdateManager.getInstalledVersion(context)}",
                                     color = TextSecondary,
                                     fontSize = 11.sp
                                 )

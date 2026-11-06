@@ -44,7 +44,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
 import com.animex.app.core.designsystem.*
@@ -260,7 +262,20 @@ fun CyberVideoSurface(
                     .setSelectionFlags(if (sub.default) C.SELECTION_FLAG_DEFAULT else 0)
                     .build()
             }
-            ExoPlayer.Builder(context).build().apply {
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    15_000,
+                    60_000,
+                    1_000,
+                    2_500
+                )
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+
+            ExoPlayer.Builder(context)
+                .setLoadControl(loadControl)
+                .setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                .build().apply {
                 val mediaItem = MediaItem.Builder()
                     .setUri(Uri.parse(source.url))
                     .setSubtitleConfigurations(localSubs)
@@ -294,7 +309,20 @@ fun CyberVideoSurface(
             val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
                 .createMediaSource(mediaItem)
 
-            ExoPlayer.Builder(context).build().apply {
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    15_000,
+                    60_000,
+                    1_000,
+                    2_500
+                )
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+
+            ExoPlayer.Builder(context)
+                .setLoadControl(loadControl)
+                .setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                .build().apply {
                 setMediaSource(mediaSource)
                 prepare()
                 if (ready.initialSeekMs > 0L) {
@@ -410,6 +438,8 @@ fun CyberVideoSurface(
                 PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = false
+                    subtitleView?.setUserDefaultStyle()
+                    subtitleView?.setUserDefaultTextSize()
                 }
             },
             modifier = Modifier.fillMaxSize()
@@ -515,7 +545,7 @@ fun CyberVideoSurface(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "$displayEpText • ${ready.currentTrack.uppercase()} • ULTRA HD",
+                                text = "$displayEpText • ${ready.currentTrack.uppercase()}",
                                 color = NeonCyan,
                                 fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace,

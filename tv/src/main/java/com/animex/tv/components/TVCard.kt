@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.animex.tv.core.model.AnimeDto
+import com.animex.tv.core.model.WatchHistoryEntry
 import com.animex.tv.core.network.NetworkClient
 import com.animex.tv.theme.*
 
@@ -193,6 +194,105 @@ fun TVCard(
             color = if (isFocused) CyberCyan else CyberTextPrimary,
             fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium,
             fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+fun TVHistoryCard(
+    entry: WatchHistoryEntry,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (isFocused) 1.08f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "tvHistoryCardScale"
+    )
+
+    val posterUrl = remember(entry.poster) {
+        NetworkClient.resolvePosterUrl(entry.poster)
+    }
+
+    Column(
+        modifier = modifier
+            .width(170.dp)
+            .scale(scale)
+            .padding(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(170.dp)
+                .height(240.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(CyberCardBg)
+                .border(
+                    width = if (isFocused) 2.5.dp else 1.dp,
+                    color = if (isFocused) CyberCyan else CyberBorderSubtle,
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .focusable(interactionSource = interactionSource)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick
+                )
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(posterUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = entry.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Progress bar overlay at the bottom
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.80f))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            ) {
+                Column {
+                    Text(
+                        text = "EP ${entry.episodeNumber}",
+                        color = CyberCyan,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { entry.progressPercent.coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = CyberCyan,
+                        trackColor = CyberVoid
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = entry.title,
+            color = if (isFocused) CyberCyan else CyberTextPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

@@ -18,8 +18,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.animex.tv.components.TVCard
 import com.animex.tv.components.TVHeroBillboard
+import com.animex.tv.components.TVHistoryCard
 import com.animex.tv.core.model.AnimeDto
 import com.animex.tv.core.model.HomeFeedDto
+import com.animex.tv.core.model.WatchHistoryEntry
 import com.animex.tv.core.network.NetworkClient
 import com.animex.tv.core.session.UserSessionRepository
 import com.animex.tv.theme.*
@@ -28,7 +30,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun TVHomeScreen(
     onOpenAnimeDetail: (Long) -> Unit,
-    onPlayAnimeDirectly: (Long, Long?, String) -> Unit,
+    onPlayAnimeDirectly: (Long, Long?, String, String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -40,6 +42,7 @@ fun TVHomeScreen(
 
     var focusedAnime by remember { mutableStateOf<AnimeDto?>(null) }
     val watchlist by UserSessionRepository.watchlist.collectAsState()
+    val continueWatching by UserSessionRepository.continueWatching.collectAsState()
 
     // Fetch Home Data
     LaunchedEffect(Unit) {
@@ -103,7 +106,7 @@ fun TVHomeScreen(
                 isInWatchlist = isFocusedInWatchlist,
                 onPlayClick = {
                     currentFocused?.let { anime ->
-                        onPlayAnimeDirectly(anime.id, anime.episodeId, anime.title)
+                        onPlayAnimeDirectly(anime.id, anime.episodeId, anime.title, anime.poster)
                     }
                 },
                 onWatchlistClick = {
@@ -117,6 +120,18 @@ fun TVHomeScreen(
                     }
                 }
             )
+        }
+
+        // Continue Watching Shelf
+        if (continueWatching.isNotEmpty()) {
+            item {
+                TVContinueWatchingShelf(
+                    historyList = continueWatching,
+                    onResume = { entry ->
+                        onPlayAnimeDirectly(entry.animeId, entry.episodeId, entry.title, entry.poster)
+                    }
+                )
+            }
         }
 
         // Horizontal Content Shelves
@@ -207,6 +222,39 @@ private fun TVShelfRow(
                     anime = anime,
                     onClick = { onAnimeSelected(anime) },
                     onFocus = { onAnimeFocused(anime) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TVContinueWatchingShelf(
+    historyList: List<WatchHistoryEntry>,
+    onResume: (WatchHistoryEntry) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
+    ) {
+        Text(
+            text = "▶ CONTINUE WATCHING",
+            color = CyberCyan,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.padding(start = 48.dp, bottom = 12.dp)
+        )
+
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 48.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(historyList, key = { "${it.animeId}_${it.episodeId}_${it.episodeNumber}" }) { item ->
+                TVHistoryCard(
+                    entry = item,
+                    onClick = { onResume(item) }
                 )
             }
         }

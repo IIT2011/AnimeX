@@ -46,7 +46,7 @@ import com.animex.tv.theme.*
 fun TVDetailScreen(
     animeId: Long,
     onBack: () -> Unit,
-    onPlayEpisode: (Long, Int, String) -> Unit,
+    onPlayEpisode: (Long, Int, String, String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -256,7 +256,7 @@ fun TVDetailScreen(
                             isPrimary = true,
                             onClick = {
                                 if (firstEp != null) {
-                                    onPlayEpisode(firstEp.id, firstEp.number, currentAnime.title)
+                                    onPlayEpisode(firstEp.id, firstEp.number, currentAnime.title, currentAnime.poster)
                                 }
                             }
                         )
@@ -304,7 +304,7 @@ fun TVDetailScreen(
                             isSelected = selectedEpisode?.id == ep.id,
                             onClick = {
                                 selectedEpisode = ep
-                                onPlayEpisode(ep.id, ep.number, currentAnime.title)
+                                onPlayEpisode(ep.id, ep.number, currentAnime.title, currentAnime.poster)
                             }
                         )
                     }

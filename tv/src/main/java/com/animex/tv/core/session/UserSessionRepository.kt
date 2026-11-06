@@ -66,7 +66,11 @@ object UserSessionRepository {
 
     fun recordHistory(context: Context, entry: WatchHistoryEntry) {
         val current = _continueWatching.value.toMutableList()
-        current.removeAll { it.animeId == entry.animeId }
+        if (entry.animeId > 0L) {
+            current.removeAll { it.animeId == entry.animeId }
+        } else {
+            current.removeAll { it.title.equals(entry.title, ignoreCase = true) }
+        }
         current.add(0, entry)
         _continueWatching.value = current.take(30)
         saveHistory(context)
